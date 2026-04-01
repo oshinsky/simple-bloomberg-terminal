@@ -13,7 +13,6 @@ config/
 # Claude Code
 .claude/
 *claude-sessions.md
-*lab-*-conversation.md
 
 # Environment / secrets
 appsettings.Development.json
