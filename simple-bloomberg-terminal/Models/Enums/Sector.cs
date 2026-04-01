@@ -1,0 +1,16 @@
+namespace simple_bloomberg_terminal.Models.Enums;
+
+public enum Sector
+{
+    ENERGY,
+    MATERIALS,
+    INDUSTRIALS,
+    CONSUMER_DISCRETIONARY,
+    CONSUMER_STAPLES,
+    HEALTH_CARE,
+    FINANCIALS,
+    INFORMATION_TECHNOLOGY,
+    COMMUNICATION_SERVICES,
+    UTILITIES,
+    REAL_ESTATE
+}

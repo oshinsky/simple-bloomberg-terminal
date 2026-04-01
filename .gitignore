@@ -1,0 +1,35 @@
+# Build output
+bin/
+obj/
+config/
+
+# Visual Studio / Rider
+.vs/
+.idea/
+*.user
+*.suo
+*.userprefs
+
+# Claude Code
+.claude/
+*claude-sessions.md
+*lab-*-conversation.md
+
+# Environment / secrets
+appsettings.Development.json
+appsettings.json
+
+# NuGet
+*.nupkg
+packages/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+appsettings.Development.json
+*.env
+
+# Client-side libraries (restore via LibMan)
+**/wwwroot/lib/

@@ -1,0 +1,25 @@
+using simple_bloomberg_terminal.Models.Enums;
+
+namespace simple_bloomberg_terminal.Models.Entities;
+
+public class CostSource
+{
+    public CostSource(CostBase costBase, string name, long companyId)
+    {
+        CostBase = costBase;
+        Name = name;
+        CompanyId = companyId;
+    }
+
+    public long Id { get; set; }
+    public CostBase CostBase { get; set; }
+    public string Name { get; set; }
+    public double? Value { get; set; }
+    public double? Percentage { get; set; }
+    public DataSource? DataSource { get; set; }
+    public long CompanyId { get; set; }
+    public long? RelatedCompanyId { get; set; }
+
+    public Company? Company { get; set; }
+    public Company? RelatedCompany { get; set; }
+}
