@@ -31,4 +31,4 @@ appsettings.Development.json
 *.env
 
 # Client-side libraries (restore via LibMan)
-**/wwwroot/lib/
+**/wwwroot/lib
