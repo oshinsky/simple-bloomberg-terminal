@@ -1,0 +1,327 @@
+@using simple_bloomberg_terminal.Models.Entities
+@using simple_bloomberg_terminal.Models.Enums
+@model simple_bloomberg_terminal.Models.ViewModels.CountryDetailsViewModel
+@{
+    ViewData["Title"] = Model.Country.Name + " — Details";
+    var c = Model.Country;
+    var riskVal = c.RiskRating;
+    var riskClass = riskVal.HasValue
+        ? (riskVal.Value <= 3.0 ? "risk-low" : riskVal.Value <= 6.0 ? "risk-medium" : "risk-high")
+        : "muted-cell";
+    var riskLabel = riskVal.HasValue
+        ? (riskVal.Value <= 3.0 ? "LOW" : riskVal.Value <= 6.0 ? "MEDIUM" : "HIGH")
+        : "N/A";
+}
+
+@* ── Hero ── *@
+<section class="detail-hero">
+    <div class="detail-hero-back">
+        <a asp-controller="Countries" asp-action="Index" class="detail-back-link">← COUNTRIES</a>
+    </div>
+
+    <div class="detail-hero-top">
+        <div class="detail-hero-name-row">
+            <h1 class="detail-hero-name">@c.Name</h1>
+            <span class="detail-code-badge">@c.Code</span>
+            <span class="detail-region-tag">@c.Region</span>
+        </div>
+        <div class="detail-hero-sub">CURRENCY: <span class="detail-hero-accent">@c.CurrencyCode</span></div>
+    </div>
+
+    <div class="detail-metrics-row">
+        <div class="detail-metric-card">
+            <div class="detail-metric-label">GDP</div>
+            <div class="detail-metric-value">
+                @if (c.GdpUsd.HasValue)
+                {
+                    <span>$@((c.GdpUsd.Value / 1e12).ToString("F2"))T</span>
+                }
+                else
+                {
+                    <span class="muted-cell">—</span>
+                }
+            </div>
+        </div>
+        <div class="detail-metric-card">
+            <div class="detail-metric-label">POPULATION</div>
+            <div class="detail-metric-value">
+                @if (c.Population.HasValue)
+                {
+                    <span>@((c.Population.Value / 1_000_000.0).ToString("F1"))M</span>
+                }
+                else
+                {
+                    <span class="muted-cell">—</span>
+                }
+            </div>
+        </div>
+        <div class="detail-metric-card">
+            <div class="detail-metric-label">RISK RATING</div>
+            <div class="detail-metric-value @riskClass">
+                @if (riskVal.HasValue)
+                {
+                    <span>@riskVal.Value.ToString("F1") — @riskLabel</span>
+                }
+                else
+                {
+                    <span class="muted-cell">—</span>
+                }
+            </div>
+        </div>
+        <div class="detail-metric-card">
+            <div class="detail-metric-label">COMPANIES</div>
+            <div class="detail-metric-value">@c.Companies.Count</div>
+        </div>
+        <div class="detail-metric-card">
+            <div class="detail-metric-label">TRADE BLOCS</div>
+            <div class="detail-metric-value">@c.TradeBlocs.Count</div>
+        </div>
+    </div>
+</section>
+
+@* ── Market Analysis + Companies & Trade Blocs ── *@
+<div class="row g-2 mb-2 align-items-center">
+    <div class="col-12 col-md-6">
+        <div class="detail-section-label mb-0">// MARKET ANALYSIS</div>
+    </div>
+    <div class="col-12 col-md-6">
+        <div class="detail-section-label mb-0">// COMPANIES & TRADE BLOCS</div>
+    </div>
+</div>
+<div class="row g-3 mb-4 align-items-start">
+    <div class="col-12 col-md-6">
+        <div class="d-flex flex-column gap-3">
+            <div class="detail-card detail-card-accent">
+                <div class="detail-card-title">MARKET POSITION</div>
+                @if (!string.IsNullOrEmpty(Model.MarketPosition))
+                {
+                    <p class="detail-market-position-text">@Model.MarketPosition</p>
+                }
+                else
+                {
+                    <div class="detail-pending">NO DATA — PENDING</div>
+                }
+            </div>
+            <div class="detail-card">
+                <div class="detail-card-title advantage-title">ADVANTAGES</div>
+                @if (Model.Advantages.Count > 0)
+                {
+                    <ul class="advantage-list">
+                        @foreach (var item in Model.Advantages)
+                        {
+                            <li>@item</li>
+                        }
+                    </ul>
+                }
+                else
+                {
+                    <div class="detail-pending">NO DATA — PENDING</div>
+                }
+            </div>
+            <div class="detail-card">
+                <div class="detail-card-title challenge-title">CHALLENGES</div>
+                @if (Model.Challenges.Count > 0)
+                {
+                    <ul class="challenge-list">
+                        @foreach (var item in Model.Challenges)
+                        {
+                            <li>@item</li>
+                        }
+                    </ul>
+                }
+                else
+                {
+                    <div class="detail-pending">NO DATA — PENDING</div>
+                }
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-md-6">
+        <div class="d-flex flex-column gap-3">
+            <div class="detail-card">
+                <div class="detail-card-title">TOP COMPANIES</div>
+                @if (Model.TopCompanies.Count > 0)
+                {
+                    <table class="terminal-table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Sector</th>
+                                <th style="text-align:right;">Revenue</th>
+                                <th style="text-align:right;">Margin</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var co in Model.TopCompanies)
+                            {
+                                <tr>
+                                    <td class="name-cell">@co.Name</td>
+                                    <td class="tag-cell">@co.Sector.ToString().Replace("_", " ")</td>
+                                    <td class="num-cell">
+                                        @if (co.RevenueTotal.HasValue)
+                                        {
+                                            <span>$@((co.RevenueTotal.Value / 1e9).ToString("F1"))B</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="muted-cell">—</span>
+                                        }
+                                    </td>
+                                    <td class="num-cell">
+                                        @if (co.GrossMargin.HasValue)
+                                        {
+                                            <span>@((co.GrossMargin.Value * 100).ToString("F1"))%</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="muted-cell">—</span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+                else
+                {
+                    <div class="detail-pending">NO DATA — PENDING</div>
+                }
+            </div>
+            <div class="detail-card">
+                <div class="detail-card-title">TRADE BLOC MEMBERSHIPS</div>
+                @if (Model.TradeBlocs.Count > 0)
+                {
+                    <div class="trade-bloc-list">
+                        @foreach (var bloc in Model.TradeBlocs)
+                        {
+                            <div class="trade-bloc-pill">
+                                <span class="trade-bloc-code">@bloc.Code</span>
+                                <span class="trade-bloc-name">@bloc.Name</span>
+                            </div>
+                        }
+                    </div>
+                    <div class="detail-bloc-count">@Model.TradeBlocs.Count ACTIVE MEMBERSHIPS</div>
+                }
+                else
+                {
+                    <div class="detail-pending">NO MEMBERSHIPS ON RECORD</div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@* ── Section 4: Charts ── *@
+<div class="detail-section-label">// HISTORICAL DATA</div>
+<div class="row g-3 mb-5">
+    <div class="col-12 col-md-6">
+        <div class="detail-card">
+            <div class="detail-card-title">GDP HISTORY (USD TRILLION)</div>
+            @if (Model.GdpHistory.Count > 0)
+            {
+                <div class="chart-container">
+                    <canvas id="gdpChart"></canvas>
+                </div>
+            }
+            else
+            {
+                <div class="detail-pending chart-pending">CHART DATA PENDING</div>
+            }
+        </div>
+    </div>
+    <div class="col-12 col-md-6">
+        <div class="detail-card">
+            <div class="detail-card-title">POPULATION HISTORY (MILLIONS)</div>
+            @if (Model.PopHistory.Count > 0)
+            {
+                <div class="chart-container">
+                    <canvas id="popChart"></canvas>
+                </div>
+            }
+            else
+            {
+                <div class="detail-pending chart-pending">CHART DATA PENDING</div>
+            }
+        </div>
+    </div>
+</div>
+
+@if (Model.GdpHistory.Count > 0 || Model.PopHistory.Count > 0)
+{
+    <script>
+        Chart.defaults.color = '#7a9ab5';
+        Chart.defaults.borderColor = '#1e2d42';
+        Chart.defaults.font.family = "'JetBrains Mono', monospace";
+        Chart.defaults.font.size = 11;
+
+        @if (Model.GdpHistory.Count > 0)
+        {
+            <text>
+            (function () {
+                var gdpLabels = [@Html.Raw(string.Join(",", Model.GdpHistory.Select(g => g.Year)))];
+                var gdpData   = [@Html.Raw(string.Join(",", Model.GdpHistory.Select(g => (g.GdpUsd / 1e12).ToString("F3", System.Globalization.CultureInfo.InvariantCulture))))];
+                var existing = Chart.getChart('gdpChart'); if (existing) existing.destroy();
+                new Chart(document.getElementById('gdpChart'), {
+                    type: 'bar',
+                    data: {
+                        labels: gdpLabels,
+                        datasets: [{
+                            label: 'GDP (T)',
+                            data: gdpData,
+                            backgroundColor: '#00d4ff33',
+                            borderColor: '#00d4ff',
+                            borderWidth: 1,
+                            borderRadius: 2
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            x: { grid: { color: '#1e2d42' } },
+                            y: { grid: { color: '#1e2d42' }, beginAtZero: false }
+                        }
+                    }
+                });
+            })();
+            </text>
+        }
+
+        @if (Model.PopHistory.Count > 0)
+        {
+            <text>
+            (function () {
+                var popLabels = [@Html.Raw(string.Join(",", Model.PopHistory.Select(p => p.Year)))];
+                var popData   = [@Html.Raw(string.Join(",", Model.PopHistory.Select(p => (p.Population / 1_000_000.0).ToString("F2", System.Globalization.CultureInfo.InvariantCulture))))];
+                var existingPop = Chart.getChart('popChart'); if (existingPop) existingPop.destroy();
+                new Chart(document.getElementById('popChart'), {
+                    type: 'line',
+                    data: {
+                        labels: popLabels,
+                        datasets: [{
+                            label: 'Population (M)',
+                            data: popData,
+                            borderColor: '#39d353',
+                            backgroundColor: '#39d35322',
+                            pointBackgroundColor: '#39d353',
+                            pointRadius: 4,
+                            fill: true,
+                            tension: 0.3
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            x: { grid: { color: '#1e2d42' } },
+                            y: { grid: { color: '#1e2d42' }, beginAtZero: false }
+                        }
+                    }
+                });
+            })();
+            </text>
+        }
+    </script>
+}

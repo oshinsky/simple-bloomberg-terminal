@@ -1,5 +1,6 @@
 using simple_bloomberg_terminal.Models.Entities;
 using simple_bloomberg_terminal.Models.Enums;
+using simple_bloomberg_terminal.Repositories;
 
 // ── Seed data ────────────────────────────────────────────────────────────────
 
@@ -96,6 +97,15 @@ Dictionary<string, double> avgRevenueByRegion = companies
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllersWithViews();
+
+// Java equivalent: @Bean / @Component + @Autowired wiring via Spring container.
+// AddSingleton = one instance for the full app lifetime (Spring's default singleton scope).
+// Order matters: CompanyMockRepository depends on ICountryRepository,
+// EventMockRepository depends on both — ASP.NET Core DI resolves the graph automatically.
+builder.Services.AddSingleton<ICountryRepository, CountryMockRepository>();
+builder.Services.AddSingleton<ICompanyRepository, CompanyMockRepository>();
+builder.Services.AddSingleton<IEventRepository, EventMockRepository>();
+builder.Services.AddSingleton<ICountryDetailsRepository, CountryDetailsMockRepository>();
 
 var app = builder.Build();
 

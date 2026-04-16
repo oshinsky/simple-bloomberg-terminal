@@ -1,8 +1,36 @@
-﻿@{
-    ViewData["Title"] = "Home Page";
+@{
+    ViewData["Title"] = "Terminal";
 }
 
-<div class="text-center">
-    <h1 class="display-4">Welcome</h1>
-    <p>Learn about <a href="https://learn.microsoft.com/aspnet/core">building Web apps with ASP.NET Core</a>.</p>
+<div class="home-hero">
+    <span class="home-hero-label">// bloomberg terminal v2.0</span>
+    <h1>Market <em>Intelligence</em><br>Dashboard</h1>
+    <p class="home-hero-sub">Real-time data &bull; Economic events &bull; Company analytics</p>
+</div>
+
+<div class="nav-cards">
+    <a asp-controller="Countries" asp-action="Index" class="nav-card-link">
+        <div class="nav-card">
+            <span class="nav-card-icon">MACRO</span>
+            <h5>Countries</h5>
+            <p>GDP, population, currency exposure &amp; sovereign risk ratings by nation</p>
+            <span class="nav-card-arrow">→ VIEW DATA</span>
+        </div>
+    </a>
+    <a asp-controller="Companies" asp-action="Index" class="nav-card-link">
+        <div class="nav-card">
+            <span class="nav-card-icon">EQUITY</span>
+            <h5>Companies</h5>
+            <p>Revenue, gross margins &amp; sector breakdown across global markets</p>
+            <span class="nav-card-arrow">→ VIEW DATA</span>
+        </div>
+    </a>
+    <a asp-controller="Events" asp-action="Index" class="nav-card-link">
+        <div class="nav-card">
+            <span class="nav-card-icon">EVENTS</span>
+            <h5>Events</h5>
+            <p>Live and historical market-moving events with impact scores</p>
+            <span class="nav-card-arrow">→ VIEW DATA</span>
+        </div>
+    </a>
 </div>

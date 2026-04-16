@@ -32,3 +32,6 @@ For every C# concept, show the Java equivalent side by side, then explain what d
 - Direct, no hand-holding
 - Code over prose
 - If no Java equivalent exists, say so and explain from scratch
+
+## Agent spawning
+- when i say envoke UX agent read /UX skill and /frontend-design:frontend-design skill

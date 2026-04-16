@@ -1,0 +1,111 @@
+@using simple_bloomberg_terminal.Models.Entities
+@{
+    ViewData["Title"] = "Events";
+    var liveEvents = ViewData["LiveEvents"] as IEnumerable<Event> ?? Enumerable.Empty<Event>();
+    var pastEvents = ViewData["PastEvents"] as IEnumerable<Event> ?? Enumerable.Empty<Event>();
+}
+
+<div class="page-header">
+    <h2><span class="page-header-accent">//</span> Events</h2>
+    <div class="page-subtitle">MARKET EVENTS — IMPACT SCORES · AFFECTED ENTITIES</div>
+</div>
+
+<div class="section-header">
+    <span class="section-header-dot live"></span>
+    <h4 class="live">Live Events</h4>
+</div>
+
+@if (!liveEvents.Any())
+{
+    <div class="empty-state">NO LIVE EVENTS AT THIS TIME</div>
+}
+else
+{
+    <table class="terminal-table">
+        <thead>
+            <tr>
+                <th>Title</th>
+                <th>Type</th>
+                <th>Date</th>
+                <th style="text-align:right;">Impact</th>
+                <th>Countries</th>
+                <th>Companies</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var ev in liveEvents)
+            {
+                <tr class="row-live">
+                    <td class="name-cell" style="font-weight:500;">@ev.Title</td>
+                    <td class="tag-cell">@ev.Type.ToString().Replace("_", " ")</td>
+                    <td class="num-cell" style="white-space:nowrap;">@ev.Date.ToShortDateString()</td>
+                    <td class="num-cell">
+                        @if (ev.ImpactScore.HasValue)
+                        {
+                            var s = ev.ImpactScore.Value;
+                            var cls = s >= 7 ? "impact-high" : s >= 4 ? "impact-medium" : "impact-low";
+                            <span class="impact-badge @cls">@s.ToString("F1")</span>
+                        }
+                        else
+                        {
+                            <span class="muted-cell">—</span>
+                        }
+                    </td>
+                    <td class="tag-cell">@string.Join(", ", ev.Countries.Select(c => c.Name))</td>
+                    <td class="muted-cell" style="font-size:0.75rem;">@string.Join(", ", ev.Companies.Select(c => c.Name))</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+<div class="section-header" style="margin-top:2.5rem;">
+    <span class="section-header-dot past"></span>
+    <h4 class="past">Past Events</h4>
+</div>
+
+@if (!pastEvents.Any())
+{
+    <div class="empty-state">NO PAST EVENTS RECORDED</div>
+}
+else
+{
+    <table class="terminal-table">
+        <thead>
+            <tr>
+                <th>Title</th>
+                <th>Type</th>
+                <th>Date</th>
+                <th>Ended</th>
+                <th style="text-align:right;">Impact</th>
+                <th>Countries</th>
+                <th>Companies</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var ev in pastEvents)
+            {
+                <tr class="row-past">
+                    <td class="name-cell">@ev.Title</td>
+                    <td class="tag-cell">@ev.Type.ToString().Replace("_", " ")</td>
+                    <td class="num-cell" style="white-space:nowrap;">@ev.Date.ToShortDateString()</td>
+                    <td class="num-cell" style="white-space:nowrap;">@(ev.EndDate?.ToShortDateString() ?? "—")</td>
+                    <td class="num-cell">
+                        @if (ev.ImpactScore.HasValue)
+                        {
+                            var s = ev.ImpactScore.Value;
+                            var cls = s >= 7 ? "impact-high" : s >= 4 ? "impact-medium" : "impact-low";
+                            <span class="impact-badge @cls">@s.ToString("F1")</span>
+                        }
+                        else
+                        {
+                            <span class="muted-cell">—</span>
+                        }
+                    </td>
+                    <td class="tag-cell">@string.Join(", ", ev.Countries.Select(c => c.Name))</td>
+                    <td class="muted-cell" style="font-size:0.75rem;">@string.Join(", ", ev.Companies.Select(c => c.Name))</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}

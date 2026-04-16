@@ -1,0 +1,53 @@
+@using simple_bloomberg_terminal.Models.Entities
+@model IEnumerable<Country>
+@{
+    ViewData["Title"] = "Countries";
+}
+
+<div class="page-header">
+    <h2><span class="page-header-accent">//</span> Countries</h2>
+    <div class="page-subtitle">SOVEREIGN DATA — GDP · POPULATION · RISK RATINGS</div>
+</div>
+
+<table class="terminal-table">
+    <thead>
+        <tr>
+            <th>Code</th>
+            <th>Name</th>
+            <th>Region</th>
+            <th>Currency</th>
+            <th style="text-align:right;">GDP (USD)</th>
+            <th style="text-align:right;">Population</th>
+            <th style="text-align:right;">Risk</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var country in Model)
+        {
+            <tr>
+                <td class="code-cell">@country.Code</td>
+                <td class="name-cell">@country.Name</td>
+                <td class="tag-cell">@country.Region</td>
+                <td class="tag-cell">@country.CurrencyCode</td>
+                <td class="num-cell">@(country.GdpUsd.HasValue ? $"${country.GdpUsd.Value / 1e12:F2}T" : "—")</td>
+                <td class="num-cell">@(country.Population.HasValue ? $"{country.Population.Value / 1_000_000:F0}M" : "—")</td>
+                <td class="num-cell">
+                    @if (country.RiskRating.HasValue)
+                    {
+                        var r = country.RiskRating.Value;
+                        var riskClass = r <= 3.0 ? "risk-low" : r <= 6.0 ? "risk-medium" : "risk-high";
+                        <span class="@riskClass">@r.ToString("F1")</span>
+                    }
+                    else
+                    {
+                        <span class="muted-cell">—</span>
+                    }
+                </td>
+                <td style="text-align:right;">
+                    <a asp-controller="Countries" asp-action="Details" asp-route-id="@country.Id" class="btn-detail">DETAILS →</a>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>

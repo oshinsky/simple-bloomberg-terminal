@@ -14,4 +14,9 @@
       <Content Include=".claude\skills\linq-lambda\SKILLS.md" />
     </ItemGroup>
 
+    <ItemGroup>
+      <None Include=".claude\skills\mock-depinjection\mock-repo-instructions.md" />
+      <None Include=".claude\skills\UX\frontend-agent-instructions.md" />
+    </ItemGroup>
+
 </Project>
