@@ -1,0 +1,224 @@
+@using simple_bloomberg_terminal.Models.Entities
+@using simple_bloomberg_terminal.Models.Enums
+@model simple_bloomberg_terminal.Models.ViewModels.CompanyDetailsViewModel
+@{
+    ViewData["Title"] = Model.Company.Name + " — Details";
+    var co = Model.Company;
+
+    var marginClass = co.GrossMargin.HasValue
+        ? (co.GrossMargin.Value >= 0.5 ? "risk-low" : co.GrossMargin.Value >= 0.25 ? "risk-medium" : "risk-high")
+        : "muted-cell";
+}
+
+@* ── Hero ── *@
+<section class="detail-hero">
+    <div class="detail-hero-back">
+        <a asp-controller="Companies" asp-action="Index" class="detail-back-link">← COMPANIES</a>
+    </div>
+
+    <div class="detail-hero-top">
+        <div class="detail-hero-name-row">
+            <h1 class="detail-hero-name">@co.Name</h1>
+            <span class="detail-code-badge">@co.Sector.ToString().Replace("_", " ")</span>
+            @if (co.Country != null)
+            {
+                <span class="detail-region-tag">@co.Country.Code</span>
+            }
+        </div>
+        <div class="detail-hero-sub">
+            INDUSTRY: <span class="detail-hero-accent">@Model.IndustryLabel</span>
+        </div>
+    </div>
+
+    <div class="detail-metrics-row">
+        <div class="detail-metric-card">
+            <div class="detail-metric-label">REVENUE</div>
+            <div class="detail-metric-value">
+                @if (co.RevenueTotal.HasValue)
+                {
+                    <span>$@((co.RevenueTotal.Value / 1e9).ToString("F1"))B</span>
+                }
+                else
+                {
+                    <span class="muted-cell">—</span>
+                }
+            </div>
+        </div>
+        <div class="detail-metric-card">
+            <div class="detail-metric-label">GROSS MARGIN</div>
+            <div class="detail-metric-value @marginClass">
+                @if (co.GrossMargin.HasValue)
+                {
+                    <span>@((co.GrossMargin.Value * 100).ToString("F1"))%</span>
+                }
+                else
+                {
+                    <span class="muted-cell">—</span>
+                }
+            </div>
+        </div>
+        <div class="detail-metric-card">
+            <div class="detail-metric-label">COUNTRY</div>
+            <div class="detail-metric-value">
+                @if (co.Country != null)
+                {
+                    <span>@co.Country.Name</span>
+                }
+                else
+                {
+                    <span class="muted-cell">—</span>
+                }
+            </div>
+        </div>
+        <div class="detail-metric-card">
+            <div class="detail-metric-label">SECTOR</div>
+            <div class="detail-metric-value">@Model.SectorLabel</div>
+        </div>
+        <div class="detail-metric-card">
+            <div class="detail-metric-label">RELATED EVENTS</div>
+            <div class="detail-metric-value">@Model.RelatedEvents.Count()</div>
+        </div>
+    </div>
+</section>
+
+@* ── Financial Overview ── *@
+<div class="detail-section-label">// FINANCIAL OVERVIEW</div>
+<div class="row g-3 mb-4">
+    <div class="col-12">
+        <div class="detail-card">
+            <div class="detail-card-title">COMPANY DATA</div>
+            @{
+                var hasAnyData = co.RevenueTotal.HasValue || co.GrossMargin.HasValue ||
+                                 co.Country != null || co.AsOf.HasValue || !string.IsNullOrEmpty(co.Cik);
+            }
+            @if (!hasAnyData)
+            {
+                <div class="detail-pending">NO DATA — PENDING</div>
+            }
+            else
+            {
+                <table class="terminal-table">
+                    <tbody>
+                        <tr>
+                            <td class="tag-cell">Revenue Total</td>
+                            <td class="num-cell">
+                                @if (co.RevenueTotal.HasValue)
+                                {
+                                    <span>$@((co.RevenueTotal.Value / 1e9).ToString("F2"))B</span>
+                                }
+                                else
+                                {
+                                    <span class="muted-cell">—</span>
+                                }
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="tag-cell">Gross Margin</td>
+                            <td class="num-cell @marginClass">
+                                @if (co.GrossMargin.HasValue)
+                                {
+                                    <span>@((co.GrossMargin.Value * 100).ToString("F1"))%</span>
+                                }
+                                else
+                                {
+                                    <span class="muted-cell">—</span>
+                                }
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="tag-cell">Country Code</td>
+                            <td class="name-cell">@(co.Country?.Code ?? "—")</td>
+                        </tr>
+                        <tr>
+                            <td class="tag-cell">Region</td>
+                            <td class="name-cell">@(co.Country?.Region ?? "—")</td>
+                        </tr>
+                        <tr>
+                            <td class="tag-cell">Currency</td>
+                            <td class="name-cell">@(co.Country?.CurrencyCode ?? "—")</td>
+                        </tr>
+                        <tr>
+                            <td class="tag-cell">As Of</td>
+                            <td class="name-cell">
+                                @if (co.AsOf.HasValue)
+                                {
+                                    <span>@co.AsOf.Value.ToShortDateString()</span>
+                                }
+                                else
+                                {
+                                    <span class="muted-cell">—</span>
+                                }
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="tag-cell">CIK</td>
+                            <td class="name-cell">
+                                @if (!string.IsNullOrEmpty(co.Cik))
+                                {
+                                    <span>@co.Cik</span>
+                                }
+                                else
+                                {
+                                    <span class="muted-cell">—</span>
+                                }
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            }
+        </div>
+    </div>
+</div>
+
+@* ── Related Events ── *@
+<div class="detail-section-label">// RELATED EVENTS</div>
+<div class="row g-3 mb-5">
+    <div class="col-12">
+        <div class="detail-card">
+            @if (!Model.RelatedEvents.Any())
+            {
+                <div class="detail-pending">NO EVENTS ON RECORD</div>
+            }
+            else
+            {
+                <table class="terminal-table">
+                    <thead>
+                        <tr>
+                            <th>Title</th>
+                            <th>Type</th>
+                            <th>Date</th>
+                            <th>Impact</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var ev in Model.RelatedEvents)
+                        {
+                            var impactClass = ev.ImpactScore.HasValue
+                                ? (ev.ImpactScore.Value >= 7 ? "impact-high" : ev.ImpactScore.Value >= 4 ? "impact-medium" : "impact-low")
+                                : "";
+                            <tr>
+                                <td class="name-cell">@ev.Title</td>
+                                <td class="tag-cell">@ev.Type.ToString().Replace("_", " ")</td>
+                                <td class="muted-cell">@ev.Date.ToShortDateString()</td>
+                                <td>
+                                    @if (ev.ImpactScore.HasValue)
+                                    {
+                                        <span class="impact-badge @impactClass">@ev.ImpactScore.Value</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="muted-cell">—</span>
+                                    }
+                                </td>
+                                <td>
+                                    <a asp-controller="Events" asp-action="Details" asp-route-id="@ev.Id" class="btn-detail">VIEW →</a>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </div>
+</div>

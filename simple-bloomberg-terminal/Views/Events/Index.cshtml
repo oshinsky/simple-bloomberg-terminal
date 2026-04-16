@@ -30,6 +30,7 @@ else
                 <th style="text-align:right;">Impact</th>
                 <th>Countries</th>
                 <th>Companies</th>
+                <th></th>
             </tr>
         </thead>
         <tbody>
@@ -53,6 +54,9 @@ else
                     </td>
                     <td class="tag-cell">@string.Join(", ", ev.Countries.Select(c => c.Name))</td>
                     <td class="muted-cell" style="font-size:0.75rem;">@string.Join(", ", ev.Companies.Select(c => c.Name))</td>
+                    <td>
+                        <a asp-controller="Events" asp-action="Details" asp-route-id="@ev.Id" class="btn-detail">VIEW →</a>
+                    </td>
                 </tr>
             }
         </tbody>
@@ -80,6 +84,7 @@ else
                 <th style="text-align:right;">Impact</th>
                 <th>Countries</th>
                 <th>Companies</th>
+                <th></th>
             </tr>
         </thead>
         <tbody>
@@ -104,6 +109,9 @@ else
                     </td>
                     <td class="tag-cell">@string.Join(", ", ev.Countries.Select(c => c.Name))</td>
                     <td class="muted-cell" style="font-size:0.75rem;">@string.Join(", ", ev.Companies.Select(c => c.Name))</td>
+                    <td>
+                        <a asp-controller="Events" asp-action="Details" asp-route-id="@ev.Id" class="btn-detail">VIEW →</a>
+                    </td>
                 </tr>
             }
         </tbody>

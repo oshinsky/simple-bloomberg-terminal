@@ -18,6 +18,7 @@
             <th>Industry</th>
             <th style="text-align:right;">Revenue</th>
             <th style="text-align:right;">Gross Margin</th>
+            <th></th>
         </tr>
     </thead>
     <tbody>
@@ -40,6 +41,9 @@
                     {
                         <span class="muted-cell">—</span>
                     }
+                </td>
+                <td>
+                    <a asp-controller="Companies" asp-action="Details" asp-route-id="@company.Id" class="btn-detail">VIEW →</a>
                 </td>
             </tr>
         }

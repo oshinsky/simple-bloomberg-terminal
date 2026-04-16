@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using simple_bloomberg_terminal.Models.Entities;
+using simple_bloomberg_terminal.Models.ViewModels;
 using simple_bloomberg_terminal.Repositories;
 
 namespace simple_bloomberg_terminal.Controllers;
@@ -30,5 +31,25 @@ public class EventsController : Controller
         ViewData["PastEvents"] = past;
 
         return View();
+    }
+
+    public IActionResult Details(long id)
+    {
+        var ev = _events.GetById(id);
+        if (ev == null) return NotFound();
+
+        bool isLive = ev.Date <= Today && (ev.EndDate == null || ev.EndDate >= Today);
+        bool isPast = ev.EndDate != null && ev.EndDate < Today;
+
+        var vm = new EventDetailsViewModel
+        {
+            Event = ev,
+            IsLive = isLive,
+            IsPast = isPast,
+            StatusLabel = isLive ? "LIVE" : isPast ? "PAST" : "UPCOMING",
+            TypeLabel = ev.Type.ToString().Replace("_", " ")
+        };
+
+        return View(vm);
     }
 }

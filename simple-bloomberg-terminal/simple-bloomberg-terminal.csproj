@@ -15,8 +15,8 @@
     </ItemGroup>
 
     <ItemGroup>
-      <None Include=".claude\skills\mock-depinjection\mock-repo-instructions.md" />
-      <None Include=".claude\skills\UX\frontend-agent-instructions.md" />
+      <None Include=".claude\skills\mock-depinjection\SKILLS.md" />
+      <None Include=".claude\skills\front-end-design-pattern\SKILLS.md" />
     </ItemGroup>
 
 </Project>

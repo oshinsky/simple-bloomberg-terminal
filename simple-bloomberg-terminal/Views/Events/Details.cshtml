@@ -1,0 +1,168 @@
+@using simple_bloomberg_terminal.Models.Entities
+@using simple_bloomberg_terminal.Models.Enums
+@model simple_bloomberg_terminal.Models.ViewModels.EventDetailsViewModel
+@{
+    ViewData["Title"] = Model.Event.Title + " — Details";
+    var ev = Model.Event;
+
+    var statusBadgeStyle = Model.IsLive
+        ? "color:var(--green)"
+        : Model.IsPast
+            ? "color:var(--muted)"
+            : "color:var(--accent)";
+
+    var impactClass = ev.ImpactScore.HasValue
+        ? (ev.ImpactScore.Value >= 7 ? "impact-high" : ev.ImpactScore.Value >= 4 ? "impact-medium" : "impact-low")
+        : "";
+}
+
+@* ── Hero ── *@
+<section class="detail-hero">
+    <div class="detail-hero-back">
+        <a asp-controller="Events" asp-action="Index" class="detail-back-link">← EVENTS</a>
+    </div>
+
+    <div class="detail-hero-top">
+        <div class="detail-hero-name-row">
+            <h1 class="detail-hero-name">@ev.Title</h1>
+            <span class="detail-code-badge" style="@statusBadgeStyle">@Model.StatusLabel</span>
+            <span class="detail-region-tag">@Model.TypeLabel</span>
+        </div>
+        <div class="detail-hero-sub">
+            DATE: <span class="detail-hero-accent">@ev.Date.ToShortDateString()</span>
+            @if (ev.EndDate.HasValue)
+            {
+                <span> — <span class="detail-hero-accent">@ev.EndDate.Value.ToShortDateString()</span></span>
+            }
+        </div>
+    </div>
+
+    <div class="detail-metrics-row">
+        <div class="detail-metric-card">
+            <div class="detail-metric-label">IMPACT</div>
+            <div class="detail-metric-value">
+                @if (ev.ImpactScore.HasValue)
+                {
+                    <span class="impact-badge @impactClass">@ev.ImpactScore.Value</span>
+                }
+                else
+                {
+                    <span class="muted-cell">—</span>
+                }
+            </div>
+        </div>
+        <div class="detail-metric-card">
+            <div class="detail-metric-label">STATUS</div>
+            <div class="detail-metric-value">@Model.StatusLabel</div>
+        </div>
+        <div class="detail-metric-card">
+            <div class="detail-metric-label">COUNTRIES</div>
+            <div class="detail-metric-value">@ev.Countries.Count</div>
+        </div>
+        <div class="detail-metric-card">
+            <div class="detail-metric-label">COMPANIES</div>
+            <div class="detail-metric-value">@ev.Companies.Count</div>
+        </div>
+        <div class="detail-metric-card">
+            <div class="detail-metric-label">TRADE BLOCS</div>
+            <div class="detail-metric-value">@ev.TradeBlocs.Count</div>
+        </div>
+    </div>
+</section>
+
+@* ── Event Details ── *@
+<div class="detail-section-label">// EVENT DETAILS</div>
+<div class="row g-3 mb-4">
+    <div class="col-12">
+        <div class="detail-card detail-card-accent">
+            <div class="detail-card-title">DESCRIPTION</div>
+            @if (!string.IsNullOrEmpty(ev.Description))
+            {
+                <p class="detail-market-position-text">@ev.Description</p>
+            }
+            else
+            {
+                <div class="detail-pending">NO DATA — PENDING</div>
+            }
+        </div>
+    </div>
+</div>
+
+@* ── Affected Entities ── *@
+<div class="detail-section-label">// AFFECTED ENTITIES</div>
+<div class="row g-3 mb-4">
+    <div class="col-12 col-md-6">
+        <div class="detail-card">
+            <div class="detail-card-title">COUNTRIES</div>
+            @if (ev.Countries.Count == 0)
+            {
+                <div class="detail-pending">NO COUNTRIES ON RECORD</div>
+            }
+            else
+            {
+                <div class="trade-bloc-list">
+                    @foreach (var country in ev.Countries)
+                    {
+                        <div class="trade-bloc-pill">
+                            <span class="trade-bloc-name">@country.Name</span>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+    <div class="col-12 col-md-6">
+        <div class="detail-card">
+            <div class="detail-card-title">COMPANIES</div>
+            @if (ev.Companies.Count == 0)
+            {
+                <div class="detail-pending">NO COMPANIES ON RECORD</div>
+            }
+            else
+            {
+                <table class="terminal-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var company in ev.Companies)
+                        {
+                            <tr>
+                                <td class="name-cell">@company.Name</td>
+                                <td>
+                                    <a asp-controller="Companies" asp-action="Details" asp-route-id="@company.Id" class="btn-detail">VIEW →</a>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </div>
+</div>
+
+@* ── Trade Blocs ── *@
+@if (ev.TradeBlocs.Count > 0)
+{
+    <div class="detail-section-label">// TRADE BLOCS</div>
+    <div class="row g-3 mb-5">
+        <div class="col-12">
+            <div class="detail-card">
+                <div class="detail-card-title">TRADE BLOC MEMBERSHIPS</div>
+                <div class="trade-bloc-list">
+                    @foreach (var bloc in ev.TradeBlocs)
+                    {
+                        <div class="trade-bloc-pill">
+                            <span class="trade-bloc-code">@bloc.Code</span>
+                            <span class="trade-bloc-name">@bloc.Name</span>
+                        </div>
+                    }
+                </div>
+                <div class="detail-bloc-count">@ev.TradeBlocs.Count TRADE BLOC(S) AFFECTED</div>
+            </div>
+        </div>
+    </div>
+}
