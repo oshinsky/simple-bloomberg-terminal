@@ -227,6 +227,12 @@ builder.Services.AddScoped<IXbrlInstanceReader, XbrlInstanceReader>();
 // Plain scoped service: it borrows the EDGAR transport through IStockApiClient rather than owning one.
 builder.Services.AddScoped<IFilingReportReader, FilingReportReader>();
 builder.Services.AddScoped<IExtractionChatService, ExtractionChatService>();
+// Measurement harness for the COST lead agent (repeatability / groundedness / precision-sheet).
+// Read-only: it drives the existing scan + chat services and writes nothing to the database.
+builder.Services.AddScoped<LedgerMeasurementService>();
+// Detached measurement batches, polled by the tracker. Singleton for the same reason ScanJobStore is:
+// the work outlives the request that started it.
+builder.Services.AddSingleton<MeasureJobStore>();
 // Perplexity sonar: typed HttpClient that web-searches a company's named suppliers/customers — the
 // counterparties SEC filings don't disclose. Feeds the "Discover related companies" action.
 builder.Services.AddHttpClient<ICounterpartyDiscovery, CounterpartyDiscoveryService>(c => ConfigureHttp(c, "Perplexity"));

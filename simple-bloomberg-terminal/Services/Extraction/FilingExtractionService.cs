@@ -82,24 +82,49 @@ public class FilingExtractionService : IFilingExtractionService
     // from evidence being FIRST, not from it being split — so none of it is lost.
     private static string SystemFor(ExtractionNode node) => node switch
     {
+        // COST is COUNTERPARTY extraction, not accounting-bucket extraction. The unit is a named
+        // company the filer transacts with, plus what it supplies and what that costs.
+        //
+        // The old schema asked for classification = COGS | OPEX | TOTAL_COSTS. That field could never
+        // be grounded: COGS-vs-OPEX is an accounting judgement the filing does not state, so there is
+        // nothing in the text to quote for it — the same failure documented above for per-field proof,
+        // and with the same result (a schema that demands impossible data gets fabricated data).
+        // Every field below is a fact printed on the page, so every field is checkable against
+        // 'evidence'. The accounting bucket is now DERIVED at save time (SUPPLIER => COGS), which is
+        // what ContributionWriter and CounterpartyDiscoveryService already defaulted to anyway.
+        //
+        // Field names are the existing envelope's (name/classification/note/value/related_company) so
+        // Parse, Combine and FormatDigest are untouched — only their MEANING is stated differently.
         ExtractionNode.COST =>
-            "You extract COST sources for a single US public company from one excerpt of its SEC " +
-            "filing. Return ONLY the costs clearly evidenced in THIS excerpt — do not guess or carry " +
-            "over outside knowledge. Focus on the cost LABEL, its segment, and any NAMED SUPPLIER or " +
-            "raw-material dependence; the exact company-total dollar figures are sourced separately " +
-            "from tagged XBRL, so prioritise getting the name/segment/supplier and proof right over " +
-            "transcribing big totals. For each cost provide: name (the cost line / segment / supplier " +
-            "label), classification (exactly one of COGS, OPEX, TOTAL_COSTS), value (cost in absolute " +
-            "US dollars — scale any 'in thousands/millions' to the full number; null if not stated), " +
-            "percentage (share of total cost or revenue 0-100, null if not stated), related_company (a " +
-            "named supplier/counterparty if the row is about one, else null). Write 'evidence' FIRST, " +
-            "before the fields it backs: ONE VERBATIM substring of this excerpt that backs this cost, " +
-            "then fill the fields to match what you quoted. Quote enough to identify every figure you " +
-            "report — for a table row that means its row label, its units and its column header. Reply " +
-            "with JSON only, no prose, no code fences: " +
-            "{\"sources\":[{\"evidence\":\"\",\"name\":\"\",\"classification\":\"\"," +
-            "\"value\":null,\"percentage\":null,\"related_company\":null}]}. If the excerpt names no " +
-            "cost source, reply {\"sources\":[]}.",
+            "You extract COUNTERPARTIES from one excerpt of a single US public company's SEC filing. " +
+            "A counterparty is a NAMED company the filer transacts with: a supplier, manufacturer, " +
+            "foundry, contract producer, distributor, reseller, customer, licensor/licensee, or " +
+            "joint-venture / commercial partner. Return ONLY counterparties clearly named in THIS " +
+            "excerpt — do not guess, do not carry over outside knowledge, and never invent a company " +
+            "name. A relationship counts even when the excerpt states NO dollar figure; the figure is " +
+            "optional, the named company is not. Do NOT return a company named only as a competitor " +
+            "or as a litigation adversary — those are not commercial counterparties.\n" +
+            "For each counterparty provide: name (the counterparty's company name exactly as written), " +
+            "related_company (the same name again), classification (the direction of trade, exactly " +
+            "one of SUPPLIER — they sell to the filer, CUSTOMER — they buy from the filer, PARTNER — " +
+            "joint venture / collaboration with no clear direction), note (SHORT plain description of " +
+            "what is bought or sold, e.g. 'wafer fabrication', 'cloud capacity', 'retail distribution'), " +
+            "value (the amount in absolute US dollars if this excerpt states one for this " +
+            "relationship — scale any 'in thousands/millions' to the full number; null if not stated), " +
+            "percentage (share of total cost or revenue 0-100, null if not stated). Write 'evidence' " +
+            "FIRST, before the fields it backs: ONE VERBATIM substring of this excerpt naming this " +
+            "counterparty, then fill the fields to match what you quoted. Quote enough to identify any " +
+            "figure you report — for a table row that means its row label, its units and its column " +
+            "header.\n" +
+            "Example of the shape (illustrative only — these companies are fictional, never return " +
+            "them): {\"sources\":[{\"evidence\":\"We purchase substantially all of our castings from " +
+            "Acme Foundry Ltd. under a supply agreement.\",\"name\":\"Acme Foundry Ltd.\"," +
+            "\"related_company\":\"Acme Foundry Ltd.\",\"classification\":\"SUPPLIER\",\"note\":" +
+            "\"metal castings\",\"value\":null,\"percentage\":null}]}\n" +
+            "Reply with JSON only, no prose, no code fences: " +
+            "{\"sources\":[{\"evidence\":\"\",\"name\":\"\",\"related_company\":\"\"," +
+            "\"classification\":\"\",\"note\":null,\"value\":null,\"percentage\":null}]}. If the " +
+            "excerpt names no counterparty, reply {\"sources\":[]}.",
 
         ExtractionNode.RISK =>
             "You extract RISKS a single US public company discloses, from one excerpt of its SEC " +
@@ -192,16 +217,6 @@ public class FilingExtractionService : IFilingExtractionService
         var headings = await GetOrParseHeadingsAsync(companyId, accession, doc, node, filingType, ct);
         var items = FilingSections.ItemsFor(node, filingType);
 
-        // Heading triage drives the narrative items (e.g. Item 7 MD&A), where bold headings line up
-        // with topic boundaries. Item 8 (financial statements) is handled separately, below.
-        var picked = headings.Count > 0 ? await TriageHeadingsAsync(headings, node, ct) : [];
-        var pickedSet = picked.ToHashSet();
-        // Always scan all of Item 1 (Business) and Item 7 (MD&A): for revenue/cost we want the full
-        // business, supplier and segment narrative, which triage can skip when judging by title.
-        // No-op for RISK (its sections are 1A/7A) and for 8-K Item 1.01 (the match is exact).
-        for (int i = 0; i < headings.Count; i++)
-            if (headings[i].Section is "Item 1" or "Item 7") pickedSet.Add(i);
-
         // Heading-based chunks for the picked headings — but NOT Item 8. In the financial statements the
         // tables are detached from their bold headings, so "nearest heading" mislabels them (a segment
         // revenue table lands under a tax note) and the per-heading cap truncates them.
@@ -216,12 +231,24 @@ public class FilingExtractionService : IFilingExtractionService
             .Where(i => i != "8" && headings.Count(h => h.Section == $"Item {i}") < MinHeadingsPerItem)
             .ToHashSet();
 
-        var pickedHeadings = pickedSet
-            .OrderBy(i => i)
-            .Select(i => headings[i])
+        // EVERY detected heading is scanned — there is no LLM triage step any more.
+        //
+        // Triage used to read the heading TITLES and pick which to scan in full. It was one model call
+        // whose output silently reshaped the whole chunk plan, which made it the least visible and
+        // least controllable part of the pipeline: a different pick meant a different set of chunks,
+        // so two runs of the "same" extraction were not reading the same text. Its failure mode was
+        // worse than its variance — an unparseable reply fell through to "read them all", turning
+        // triage off without a word (see the note that used to sit on TriageHeadingsAsync).
+        //
+        // The budget it was buying is now enforced by RankChunks: the same deterministic keyword
+        // relevance scoring BuildSection already uses for thin Items, applied to the packed heading
+        // chunks. Ranking is pure, so the chunk plan a filing produces is fixed — reproducible across
+        // runs and testable without a provider.
+        var pickedHeadings = headings
             .Where(h => h.Section != "Item 8" && !thin.Contains(h.Section["Item ".Length..]))
             .ToList();
-        var chunks = PackHeadings(pickedHeadings);
+        var chunks = FilingSections.RankChunks(
+            PackHeadings(pickedHeadings), node, FilingSections.MaxScanChunks);
 
         // Item 8: the SEC's rendered statement reports, one clean table per file. Falls back to
         // sequential document-order chunks of the section when the filing has no report index, so
@@ -236,8 +263,8 @@ public class FilingExtractionService : IFilingExtractionService
         }
 
         // The thin Items absorb whatever the other two feeds left of the scan's ceiling. They go last
-        // for a reason: Item 8 carries the audited tables and the triaged headings were chosen on
-        // purpose, whereas this feed is a blind sequential read of a section whose outline we failed
+        // for a reason: Item 8 carries the audited tables and the heading chunks are ranked on
+        // relevance, whereas this feed is a blind sequential read of a section whose outline we failed
         // to parse. When something has to give, it should give here.
         //
         // Before this, the three feeds each sized themselves independently and nothing reconciled
@@ -252,11 +279,14 @@ public class FilingExtractionService : IFilingExtractionService
                 chunks.AddRange(FilingSections.BuildSection(thinRaw, item, node, perItem));
         }
 
-        // The page's triage report: every heading offered + whether scanned. Item 8 and the thin Items
-        // are read in full sequentially, so their headings are all marked scanned.
+        // The page's coverage report: every heading detected + whether it reached a worker. Item 8 and
+        // the thin Items are read in full sequentially, so their headings are all marked scanned; a
+        // heading-derived one counts as scanned when its title survived into a kept chunk (RankChunks
+        // can trim past the ceiling).
+        var keptTitles = chunks.SelectMany(c => c.Titles ?? []).ToHashSet(StringComparer.Ordinal);
         var report = headings
-            .Select((h, i) => new ScannedHeading(h.Section, h.Title,
-                h.Section == "Item 8" || thin.Contains(h.Section["Item ".Length..]) || pickedSet.Contains(i)))
+            .Select(h => new ScannedHeading(h.Section, h.Title,
+                h.Section == "Item 8" || thin.Contains(h.Section["Item ".Length..]) || keptTitles.Contains(h.Title)))
             .ToList();
 
         // Announce the plan once (before any worker runs) so the widget can lay out the section tree;
@@ -267,87 +297,7 @@ public class FilingExtractionService : IFilingExtractionService
         var findings = chunks.Count > 0 ? await ScanChunksAsync(chunks, node, onProgress, ct) : [];
         var digest = findings.Count > 0 ? FormatDigest(findings, node) : "";
         _cache.Set(FindingsKey(accession, doc, node), digest, CacheFor);
-        return new AutoScanResult(chunks.Count, findings.Count, report);
-    }
-
-    // Triage step: feed only the heading titles (cheap) to the scan model and let it pick the ids
-    // worth reading in full. Falls back to every heading if triage returns nothing or is unreachable.
-    private async Task<List<int>> TriageHeadingsAsync(
-        IReadOnlyList<FilingHeading> headings, ExtractionNode node, CancellationToken ct)
-    {
-        var list = new StringBuilder();
-        for (int i = 0; i < headings.Count; i++)
-            list.Append(i).Append(": [").Append(headings[i].Section).Append("] ")
-                .Append(headings[i].Title).Append('\n');
-
-        try
-        {
-            // Same reasoning-token trap as ScanChunkAsync: the visible answer is a short list of ids,
-            // but on a reasoning fast model this ceiling is max_completion_tokens and covers the
-            // reasoning too — and triage reasons over the WHOLE heading list, which runs to 86 titles
-            // on AMD. 800 was not a budget for that, and the failure was invisible: an empty parse
-            // falls through to "read them all" below, quietly turning triage off and scanning every
-            // heading. That reads as a slow, expensive scan, never as an error.
-            var answer = await _llm.CompleteAsync(
-                TriageSystemFor(node), $"Headings:\n{list}", maxTokens: 8000, jsonObject: true, fast: true, ct: ct);
-            var ids = ParseIds(answer, headings.Count);
-            if (ids.Count > 0) return ids;
-        }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException) { /* fall through */ }
-
-        return Enumerable.Range(0, headings.Count).ToList();   // triage failed → read them all
-    }
-
-    // The triage system prompt: pick the headings whose section is most likely to carry this node's data.
-    private static string TriageSystemFor(ExtractionNode node)
-    {
-        var target = node switch
-        {
-            ExtractionNode.COST => "cost, expense, COGS, operating-expense or major-supplier figures",
-            ExtractionNode.RISK => "disclosed risk factors or market-risk exposures",
-            // Named after the disclosures that actually carry the breakdowns, so triage recognises them
-            // by their own heading wording rather than only by the word "revenue": segment and
-            // geographic revenue (ASC 280), disaggregation of revenue and remaining performance
-            // obligations (ASC 606), major-customer concentration (ASC 275-10-50), equity-method
-            // investments and JV partners (ASC 323), plus the Item 1 / 8-K narrative of customers,
-            // distribution channels, backlog and named contract wins.
-            //
-            // The trailing risk-factor clause is what makes Item 1A affordable. Its headings are 20-40
-            // pages of largely generic risk, of which only the concentration ones bear on revenue, and
-            // unlike Item 7 it is NOT force-included below — triage is the only thing filtering it. So
-            // the qualifier ("that name a specific customer…") is doing real work: without it triage
-            // reads a section title like "Risks Related to Our Business" as on-topic and takes the lot.
-            _                   => "revenue figures or revenue breakdowns — by segment, product, " +
-                                   "region or major customer; disaggregation of revenue, remaining " +
-                                   "performance obligations, customer concentration, equity-method " +
-                                   "investments and joint-venture partners; the narrative on " +
-                                   "customers, distribution channels, backlog and named contracts; " +
-                                   "and risk factors that name a specific customer, contract, " +
-                                   "backlog or revenue concentration — but NOT generic risk " +
-                                   "boilerplate that names no counterparty and gives no figure",
-        };
-        return "You triage sub-section headings from one US public company's SEC filing. You are given a " +
-               "numbered list of headings as 'id: [Item] Title'. Choose the ids of the headings whose " +
-               "section most likely contains " + target + ". Prefer headings that name specifics over " +
-               "generic or boilerplate ones; skip headings clearly unrelated. Return only ids from the " +
-               "list. Reply with JSON only, no prose, no code fences: {\"ids\":[0,3,7]}.";
-    }
-
-    // Pull the chosen heading ids out of the triage JSON, keeping only valid, distinct, in-range ids.
-    private static List<int> ParseIds(string answer, int count)
-    {
-        using var doc = LlmJson.ParseObject(answer);
-        if (doc is null || !doc.RootElement.TryGetProperty("ids", out var ids) || ids.ValueKind != JsonValueKind.Array)
-            return [];
-        var seen = new HashSet<int>();
-        foreach (var el in ids.EnumerateArray())
-        {
-            int? id = el.ValueKind == JsonValueKind.Number && el.TryGetInt32(out var n) ? n
-                    : el.ValueKind == JsonValueKind.String && int.TryParse(el.GetString(), out var s) ? s
-                    : null;
-            if (id is { } v && v >= 0 && v < count) seen.Add(v);
-        }
-        return seen.ToList();
+        return new AutoScanResult(chunks.Count, findings.Count, report, digest);
     }
 
     private async Task<List<FilingHeading>> GetOrParseHeadingsAsync(
@@ -391,7 +341,11 @@ public class FilingExtractionService : IFilingExtractionService
         return company is null || string.IsNullOrWhiteSpace(company.Cik) ? null : Cik.Trim(company.Cik);
     }
 
-    private static string ReportsKey(string accession, ExtractionNode node) =>
+    // Public for the same reason RawKey is: the measurement harness scores evidence against the text
+    // the workers actually read, and Item 8 does NOT come from the filing document — it comes from
+    // these rendered reports. Reading the entry a scan just populated keeps the corpus complete
+    // without re-fetching a dozen R*.htm files.
+    public static string ReportsKey(string accession, ExtractionNode node) =>
         $"filing-reports:{node}:{accession}";
 
     // Item 8 comes from the SEC's own rendered reports (R*.htm) rather than from the filing document:

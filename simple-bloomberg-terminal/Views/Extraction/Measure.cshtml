@@ -1,0 +1,418 @@
+@model simple_bloomberg_terminal.Models.ViewModels.MeasureViewModel
+@{ ViewData["Title"] = "Extraction measurement"; }
+
+<div class="page-header">
+    <h2><span class="page-header-accent">//</span> Extraction measurement — COST</h2>
+    <div class="page-subtitle">
+        Runs the full pipeline N times over the same filing — fast workers AND lead agent, graded
+        separately · repeatability + evidence groundedness scored automatically · precision is the
+        manual pass over the blank <code>judgement</code> column
+    </div>
+</div>
+
+<div class="form-card" id="measureForm">
+    @Html.AntiForgeryToken()
+    <div class="form-card-title">Targets</div>
+    <div class="form-stack">
+        <div>
+            <label class="form-label" for="Targets">One filing per line — <code>companyId, accession, doc[, form]</code></label>
+            <textarea class="form-control" id="Targets" rows="5"
+                      placeholder="12, 0000002488-25-000012, amd-20241228.htm, 10-K">@Model.Targets</textarea>
+            <div class="form-text">
+                Every run is a FULL pipeline run — its own worker scan plus its own lead call — and runs
+                execute concurrently (up to 10 at a time). Section selection is deterministic: every
+                detected heading is scanned, ranked by relevance to the chunk budget.
+            </div>
+        </div>
+        <div>
+            <label class="form-label" for="Runs">Runs per filing</label>
+            <input class="form-control" id="Runs" type="number" min="2" max="20" value="@Model.Runs" style="max-width:8rem">
+        </div>
+    </div>
+    <div class="form-actions">
+        <button type="button" class="btn btn-primary" id="measureRun">Run measurement</button>
+        <span id="measureStatus" class="form-text"></span>
+    </div>
+</div>
+
+@* ── Live tracker ───────────────────────────────────────────────────────────────────────────── *@
+<div class="form-card" id="trackerCard" hidden>
+    <div class="form-card-title">Progress</div>
+    <div id="trackerBody"></div>
+</div>
+
+<script>
+(function () {
+    const btn = document.getElementById('measureRun');
+    const statusEl = document.getElementById('measureStatus');
+    const card = document.getElementById('trackerCard');
+    const body = document.getElementById('trackerBody');
+    const token = () => document.querySelector('input[name="__RequestVerificationToken"]')?.value;
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+    let started = null;
+    const elapsed = () => {
+        const s = Math.round((new Date() - started) / 1000);
+        return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+    };
+
+    btn.addEventListener('click', async () => {
+        const payload = {
+            targets: document.getElementById('Targets').value,
+            runs: Number(document.getElementById('Runs').value) || 2
+        };
+        btn.disabled = true;
+        btn.textContent = 'Running…';
+        started = new Date();
+        card.hidden = false;
+
+        let res;
+        try {
+            res = await fetch('/extraction/measure/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token() },
+                body: JSON.stringify(payload)
+            });
+        } catch (e) { return fail('Network error: ' + e.message); }
+        if (!res.ok) return fail('Failed to start: ' + await res.text());
+
+        const { jobId } = await res.json();
+        poll(jobId);
+    });
+
+    function fail(msg) {
+        btn.disabled = false;
+        btn.textContent = 'Run measurement';
+        statusEl.textContent = msg;
+    }
+
+    // 1s poll. The tracker is the only reason this batch is detached, so it must stay cheap: the
+    // status DTO carries counts and titles, never the evidence text or the finished rows.
+    async function poll(jobId) {
+        let res;
+        try { res = await fetch(`/extraction/measure/status/${jobId}`); }
+        catch { return setTimeout(() => poll(jobId), 2000); }
+        if (!res.ok) return fail('Job not found.');
+
+        const job = await res.json();
+        render(job);
+
+        if (job.status === 'Done') { window.location = `/extraction/measure/result/${jobId}`; return; }
+        if (job.status === 'Error') return fail(job.error || 'Measurement failed.');
+        setTimeout(() => poll(jobId), 1000);
+    }
+
+    const PHASE = { queued: 'queued', scanning: 'fast workers', lead: 'lead agent', done: 'done' };
+
+    function render(job) {
+        statusEl.textContent = `${elapsed()} elapsed · ${job.runs.length} run(s) reporting`;
+        body.innerHTML = job.runs.map(r => {
+            const pct = r.chunksTotal ? Math.round(100 * r.chunksDone / r.chunksTotal) : 0;
+            // Only the chunks that have reported are worth listing — a wall of "Queued" rows for
+            // every run at once buries the ones actually moving.
+            const active = r.chunks
+                .map((c, i) => ({ ...c, i }))
+                .filter(c => c.status !== 'Queued');
+            return `
+              <div style="margin-bottom:1rem;padding-bottom:.75rem;border-bottom:1px solid var(--border-subtle);">
+                <div style="display:flex;gap:.75rem;align-items:baseline;flex-wrap:wrap;">
+                  <strong>${esc(r.filing)} · run ${r.run}</strong>
+                  <span class="tag-cell">${esc(PHASE[r.phase] || r.phase)}</span>
+                  <span class="muted-cell">${r.chunksDone}/${r.chunksTotal} chunks (${pct}%)</span>
+                  <span class="muted-cell">fast: ${r.workerItems} items</span>
+                  ${r.errors ? `<span class="impact-badge impact-high">${r.errors} errors</span>` : ''}
+                  <span class="muted-cell">strong: ${r.phase === 'done' ? r.leadItems + ' items' : '…'}</span>
+                </div>
+                <details style="margin-top:.4rem;">
+                  <summary class="muted-cell" style="cursor:pointer;">chunk detail (${active.length})</summary>
+                  <div style="margin-top:.35rem;font-family:var(--font-mono);font-size:.85em;">
+                    ${active.map(c => `
+                      <div style="display:flex;gap:.5rem;">
+                        <span style="width:5rem;flex:none;" class="${c.status === 'Error' ? 'impact-badge impact-high' : 'muted-cell'}">${esc(c.status)}</span>
+                        <span style="width:3rem;flex:none;text-align:right;">${c.status === 'Done' ? c.found : ''}</span>
+                        <span class="muted-cell">${esc((c.titles || []).join(' · ') || '(section body)')}</span>
+                      </div>`).join('')}
+                  </div>
+                </details>
+              </div>`;
+        }).join('');
+    }
+})();
+</script>
+
+@if (Model.Results.Count > 0)
+{
+    @foreach (var r in Model.Results)
+    {
+        <div class="form-card">
+            <div class="form-card-title" style="display:flex;justify-content:space-between;align-items:baseline;gap:1rem;flex-wrap:wrap;">
+                <span>@r.Company</span>
+                <span class="muted-cell" style="font-weight:normal;">
+                    @r.Accession · @r.Runs runs · @r.Model · @r.RunAt.ToString("yyyy-MM-dd HH:mm")Z
+                </span>
+            </div>
+
+            @if (r.Error is not null)
+            {
+                <div class="alert alert-danger">@r.Error</div>
+            }
+            else
+            {
+                <div style="overflow-x:auto">
+                    <table class="terminal-table">
+                        <thead>
+                        <tr>
+                            <th rowspan="2">Run</th><th rowspan="2">Chunks</th>
+                            <th colspan="2">Fast workers</th>
+                            <th colspan="2">Lead agent</th>
+                            <th rowspan="2">Errors</th>
+                        </tr>
+                        <tr><th>Items</th><th>Ground %</th><th>Items</th><th>Ground %</th></tr>
+                        </thead>
+                        <tbody>
+                        @foreach (var d in r.RunDetail)
+                        {
+                            <tr>
+                                <td class="code-cell">@d.Run</td>
+                                <td class="num-cell">@d.Chunks</td>
+                                <td class="num-cell">@d.WorkerItems</td>
+                                <td class="num-cell">@d.WorkerGroundPct</td>
+                                <td class="num-cell">@d.LeadItems</td>
+                                <td class="num-cell">@d.LeadGroundPct</td>
+                                <td class="num-cell">
+                                    @if (d.Errors > 0)
+                                    {
+                                        <span class="impact-badge impact-high">@d.Errors</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="muted-cell">0</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                        <tr class="row-live">
+                            <td class="code-cell"><strong>mean</strong></td>
+                            <td class="num-cell">@r.MeanChunks</td>
+                            <td class="num-cell">@r.MeanWorkerItems</td>
+                            <td class="num-cell">@r.WorkerGroundPct</td>
+                            <td class="num-cell">@r.MeanLeadItems</td>
+                            <td class="num-cell">@r.LeadGroundPct</td>
+                            <td class="num-cell">@r.TotalErrors</td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                @* Repeatability and retention exist only ACROSS runs, so they have no per-run cell —
+                   they belong beneath the table rather than in it. *@
+                <div class="detail-metric-row" style="display:flex;gap:2rem;flex-wrap:wrap;margin-top:.75rem;">
+                    <div>
+                        <div class="ext-field-label">Repeatability</div>
+                        <div class="num-cell">fast @r.WorkerRepeatPct% · lead @r.LeadRepeatPct%</div>
+                    </div>
+                    <div>
+                        <div class="ext-field-label">Groundedness</div>
+                        <div class="num-cell">fast @r.WorkerGroundPct% · lead @r.LeadGroundPct%</div>
+                    </div>
+                    <div>
+                        <div class="ext-field-label">Retention</div>
+                        <div class="num-cell">@r.RetentionPct%</div>
+                    </div>
+                </div>
+
+                @if (r.TotalErrors > 0)
+                {
+                    <div class="alert alert-warning" style="margin-top:.75rem;">
+                        Some worker calls failed. A failed worker returns no candidates, which is
+                        indistinguishable from a chunk that honestly contained none — so the fast layer's
+                        items and the retention figure are understated. Re-run before reporting these.
+                    </div>
+                }
+            }
+        </div>
+    }
+
+    @* ── Annotation grid — the manual precision pass ────────────────────────────────────────── *@
+    <div class="form-card">
+        <div class="form-card-title" style="display:flex;justify-content:space-between;align-items:center;gap:1rem;">
+            <span>Review — judge each claim</span>
+            <span style="display:flex;gap:.75rem;align-items:center;">
+                <label class="form-label" for="layerPick" style="margin:0;">Layer</label>
+                <select class="form-select" id="layerPick" style="width:auto">
+                    <option value="LEAD">Lead agent</option>
+                    <option value="WORKER">Fast workers</option>
+                </select>
+                <label class="form-label" for="runPick" style="margin:0;">Run</label>
+                <select class="form-select" id="runPick" style="width:auto"></select>
+                <span id="precisionOut" class="muted-cell"></span>
+            </span>
+        </div>
+        <div class="form-text">
+            Precision is measured over ONE run of ONE layer. Switch to Fast workers to judge the raw
+            per-chunk output. Click a row's evidence to read the full quote and open the filing there.
+        </div>
+        <div style="overflow-x:auto">
+            <table class="terminal-table" id="reviewTable">
+                <thead>
+                <tr>
+                    <th>Counterparty</th><th>Direction</th><th>What</th><th>Value</th>
+                    <th>Section</th><th>Grounded</th><th>Evidence</th><th>Judgement</th>
+                </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="form-card">
+        <div class="form-card-title">Result sheet — one row per (filing, run, item)</div>
+        <textarea class="form-control" id="csvBox" rows="10" readonly style="font-family:var(--font-mono)"></textarea>
+        <div class="form-actions">
+            <button type="button" class="btn btn-secondary" id="csvDownload">Download CSV</button>
+        </div>
+    </div>
+
+    <script>
+    (function () {
+        const ROWS = @Html.Raw(Model.RowsJson ?? "[]");
+
+        // Your three precision buckets, plus one for a row that is grounded and correctly valued but
+        // is not a commercial counterparty at all (a competitor, a plaintiff) — that failure is
+        // invisible to the groundedness check, so it needs its own bucket rather than being forced
+        // into "wrongly classified".
+        const JUDGEMENTS = ['', 'ISPRAVNA', 'POGRESNO_KLASIFICIRANA', 'POGRESNA_VRIJEDNOST', 'NIJE_COUNTERPARTY'];
+
+        const runPick = document.getElementById('runPick');
+        const layerPick = document.getElementById('layerPick');
+        const tbody = document.querySelector('#reviewTable tbody');
+        const csvBox = document.getElementById('csvBox');
+        const precisionOut = document.getElementById('precisionOut');
+        const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
+            ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+        // Judgements live on the row objects, so switching runs and re-rendering never loses them.
+        ROWS.forEach(r => r.judgement = '');
+
+        const runs = [...new Set(ROWS.map(r => r.run))].sort((a, b) => a - b);
+        runs.forEach(n => runPick.add(new Option('Run ' + n, n)));
+
+        // The filing on EDGAR, opened at the passage: #:~:text= is the browser's native text
+        // fragment, so no viewer of our own is needed.
+        //
+        // Two things the fragment syntax demands that are easy to get wrong:
+        //
+        // 1. It is COMMA-DELIMITED — text=[prefix-,]start[,end][,-suffix] — and encodeURIComponent
+        //    does NOT escape commas. A quote containing them is parsed as several parts and silently
+        //    fails. (One comma is the trap: it parses as a valid start,end pair and still highlights
+        //    something, so the bug hides until a quote has two or more.) Hyphens delimit the
+        //    prefix-/-suffix markers, so they are escaped for the same reason.
+        // 2. A match must begin and end on a WORD BOUNDARY, so a quote may never be cut mid-word.
+        //    Long quotes therefore use the start,end range form over whole words rather than a
+        //    character truncation — which also survives the whitespace the rendered filing inserts
+        //    in the middle of a long passage.
+        const encFrag = s => encodeURIComponent(s).replace(/,/g, '%2C').replace(/-/g, '%2D');
+
+        function secUrl(r) {
+            const cik = String(r.cik || '').replace(/^0+/, '');
+            const acc = String(r.accession || '').replace(/-/g, '');
+            const base = `https://www.sec.gov/Archives/edgar/data/${cik}/${acc}/${r.doc}`;
+            const quote = String(r.evidence || '').replace(/\s+/g, ' ').trim();
+            if (!quote) return base;
+            if (quote.length <= 100) return `${base}#:~:text=${encFrag(quote)}`;
+            const words = quote.split(' ');
+            const start = words.slice(0, 6).join(' ');
+            const end = words.slice(-6).join(' ');
+            return `${base}#:~:text=${encFrag(start)},${encFrag(end)}`;
+        }
+
+        const inView = r => r.run === Number(runPick.value) && r.layer === layerPick.value;
+
+        function render() {
+            tbody.innerHTML = '';
+            ROWS.filter(inView).forEach(r => {
+                const tr = document.createElement('tr');
+                tr.innerHTML =
+                    `<td class="name-cell">${esc(r.counterparty)}</td>` +
+                    `<td class="tag-cell">${esc(r.direction || '—')}</td>` +
+                    `<td class="muted-cell">${esc(r.what || '—')}</td>` +
+                    `<td class="num-cell">${r.value == null ? '—' : '$' + (r.value / 1e9).toFixed(2) + 'B'}</td>` +
+                    `<td class="tag-cell">${esc(r.section || '—')}</td>` +
+                    `<td class="num-cell"><span class="impact-badge ${r.grounded ? 'impact-low' : 'impact-high'}">` +
+                        `${r.grounded ? 'YES' : 'NO'} ${r.matchScore}</span></td>` +
+                    `<td class="muted-cell" style="max-width:26rem;">` +
+                        `<div class="evidence-link" role="button" tabindex="0">evidence ▾</div>` +
+                        `<div class="ev-full" hidden style="margin-top:.35rem;white-space:pre-wrap;">` +
+                            `${esc(r.evidence || '(none)')}` +
+                            `<div style="margin-top:.35rem;"><a href="${esc(secUrl(r))}" target="_blank" rel="noopener">open filing ↗</a></div>` +
+                        `</div></td>` +
+                    `<td></td>`;
+
+                const sel = document.createElement('select');
+                sel.className = 'form-select';
+                JUDGEMENTS.forEach(j => sel.add(new Option(j || '— judge —', j)));
+                sel.value = r.judgement || '';
+                sel.addEventListener('change', () => { r.judgement = sel.value; refresh(); });
+                tr.lastElementChild.appendChild(sel);
+
+                const toggle = tr.querySelector('.evidence-link');
+                const full = tr.querySelector('.ev-full');
+                toggle.addEventListener('click', () => {
+                    full.hidden = !full.hidden;
+                    toggle.textContent = full.hidden ? 'evidence ▾' : 'evidence ▴';
+                });
+
+                tbody.appendChild(tr);
+            });
+            refresh();
+        }
+
+        // Precision = share of JUDGED rows marked correct, over the run being reviewed. Judged, not
+        // all — an unannotated row is missing data, and counting it as wrong would make precision
+        // read 0% at the start of every session and creep up as an artefact of how far you have got.
+        function refresh() {
+            const inRun = ROWS.filter(inView);
+            const judged = inRun.filter(r => r.judgement);
+            const ok = judged.filter(r => r.judgement === 'ISPRAVNA').length;
+            precisionOut.textContent = judged.length === 0
+                ? `0 / ${inRun.length} judged`
+                : `precision ${(100 * ok / judged.length).toFixed(1)}% · ${judged.length} / ${inRun.length} judged`;
+            csvBox.value = toCsv();
+        }
+
+        // The single CSV writer. It lives here rather than server-side because `judgement` is filled
+        // in this table — generating it in C# would mean a second writer producing a stale column.
+        const COLS = ['layer', 'company', 'cik', 'accession', 'doc', 'run', 'counterparty', 'direction',
+            'what', 'value', 'evidence', 'section', 'grounded', 'matchScore', 'runsPresent',
+            'valueStable', 'whatVariants', 'sectionCandidates', 'runChunks', 'runWorkerItems',
+            'runLeadItems', 'runErrors', 'workerGroundPct', 'workerRepeatPct', 'leadGroundPct',
+            'leadRepeatPct', 'retentionPct', 'totalErrors', 'judgement', 'model', 'runAt'];
+        // Quote text, leave numbers/booleans bare so Excel reads them as numbers and COUNTIF works.
+        const cell = v => v == null ? ''
+            : (typeof v === 'number' || typeof v === 'boolean') ? String(v).toUpperCase()
+            : `"${String(v).replace(/"/g, '""').replace(/[\r\n]+/g, ' ')}"`;
+        const toCsv = () => [COLS.join(',')]
+            .concat(ROWS.map(r => COLS.map(c => cell(r[c])).join(',')))
+            .join('\n');
+
+        runPick.addEventListener('change', render);
+        layerPick.addEventListener('change', render);
+        render();
+
+        document.getElementById('csvDownload').addEventListener('click', () => {
+            const blob = new Blob([csvBox.value], { type: 'text/csv;charset=utf-8' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'extraction-measurement.csv';
+            a.click();
+            URL.revokeObjectURL(a.href);
+        });
+
+        // The annotations are in-memory only; a reload loses them and the run costs real money.
+        window.addEventListener('beforeunload', e => {
+            if (ROWS.some(r => r.judgement)) { e.preventDefault(); e.returnValue = ''; }
+        });
+    })();
+    </script>
+}

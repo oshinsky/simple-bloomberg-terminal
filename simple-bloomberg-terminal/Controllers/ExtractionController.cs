@@ -38,6 +38,8 @@ public class ExtractionController : Controller
     private readonly RediscoverJobStore _rediscoverJobs;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IUserApiKeyProvider _keys;
+    private readonly LedgerMeasurementService _measure;
+    private readonly MeasureJobStore _measureJobs;
 
     public ExtractionController(
         IRevenueSourceRepository revenue,
@@ -52,7 +54,9 @@ public class ExtractionController : Controller
         ScanJobStore jobs,
         RediscoverJobStore rediscoverJobs,
         IServiceScopeFactory scopeFactory,
-        IUserApiKeyProvider keys)
+        IUserApiKeyProvider keys,
+        LedgerMeasurementService measure,
+        MeasureJobStore measureJobs)
     {
         _revenue = revenue;
         _cost = cost;
@@ -67,6 +71,8 @@ public class ExtractionController : Controller
         _rediscoverJobs = rediscoverJobs;
         _scopeFactory = scopeFactory;
         _keys = keys;
+        _measure = measure;
+        _measureJobs = measureJobs;
     }
 
     // Write the same 424 "missing key" envelope the global filter produces, for STREAMING actions
@@ -289,6 +295,136 @@ public class ExtractionController : Controller
         });
     }
 
+    // ── Measurement harness ────────────────────────────────────────────────────────────────────
+    // Runs the COST lead agent N times over the same filing(s) and scores repeatability +
+    // groundedness. Server-side and in-process on purpose: driving the normal chat path would mean
+    // N browser sessions parsing ```ledger``` blocks in JS and pasting results out by hand.
+    // Read-only — nothing here writes to the database.
+
+    // Opened blank, or deep-linked from a company's COST SOURCES "MEASURE AGENT" button with one
+    // filing already chosen — that arrives prefilled as a target line so the accession/doc never have
+    // to be copied by hand. More lines can still be added before running.
+    [HttpGet, Route("measure")]
+    public IActionResult Measure(long? companyId, string? accession, string? doc, string? form)
+    {
+        var vm = new MeasureViewModel();
+        if (companyId is { } id && !string.IsNullOrWhiteSpace(accession) && !string.IsNullOrWhiteSpace(doc))
+            vm.Targets = string.Join(", ", new[] { id.ToString(), accession, doc, form }
+                .Where(p => !string.IsNullOrWhiteSpace(p)));
+        return View(vm);
+    }
+
+    // Detached, like scan-auto-async: the batch runs for minutes, so holding a request open would
+    // give the page nothing to show and would die to any proxy timeout. Registers a MeasureJob, fires
+    // the work on a background task with its OWN DI scope (the request scope and its DbContext are
+    // gone the moment this returns), and hands back the id for the tracker to poll.
+    [HttpPost, Route("measure/start")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> MeasureStart([FromBody] MeasureViewModel vm)
+    {
+        var keys = await _keys.GetAsync();
+        RequireParsingKey(keys);
+
+        var targets = new List<(long CompanyId, string Accession, string Doc, string? Form)>();
+        foreach (var line in (vm.Targets ?? "").Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            // "companyId, accession, doc[, form]" — one filing per line.
+            var f = line.Split(',', StringSplitOptions.TrimEntries);
+            if (f.Length < 3 || !long.TryParse(f[0], out var companyId)) continue;
+            targets.Add((companyId, f[1], f[2], f.Length > 3 && f[3].Length > 0 ? f[3] : null));
+        }
+        if (targets.Count == 0) return BadRequest("No valid target lines.");
+
+        var runs = Math.Clamp(vm.Runs, 2, 20);
+        var job = new MeasureJob { Runs = runs };
+        _measureJobs.Add(job);
+
+        _ = Task.Run(async () =>
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var sp = scope.ServiceProvider;
+            sp.GetRequiredService<IUserApiKeyProvider>().Set(keys);
+            var measure = sp.GetRequiredService<LedgerMeasurementService>();
+            var companies = sp.GetRequiredService<ICompanyRepository>();
+
+            try
+            {
+                foreach (var t in targets)
+                {
+                    var label = companies.GetById(t.CompanyId)?.Name ?? $"#{t.CompanyId}";
+                    // One filing's failure must not void the whole batch — a batch that took twenty
+                    // minutes is not something to throw away because the fourth filing 404'd.
+                    try
+                    {
+                        var result = await measure.MeasureAsync(
+                            t.CompanyId, t.Accession, t.Doc, runs, t.Form,
+                            p => job.Apply(p with { Filing = label }));
+                        lock (job.Lock) job.Results.Add(result);
+                    }
+                    catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or InvalidOperationException)
+                    {
+                        lock (job.Lock)
+                            job.Results.Add(new FilingMeasurement(
+                                label, "", t.Accession, runs,
+                                0, 0, 0, 0, 0, 0, 0, 0, 0, "", DateTime.UtcNow, [], [], ex.Message));
+                    }
+                }
+
+                job.RowsJson = JsonSerializer.Serialize(
+                    job.Results.SelectMany(r => r.Rows),
+                    new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+                job.Status = MeasureJobStatus.Done;
+            }
+            catch (Exception ex)
+            {
+                job.Error = ex.Message;
+                job.Status = MeasureJobStatus.Error;
+            }
+        });
+
+        return Json(new { jobId = job.Id });
+    }
+
+    // Polled by the tracker (~1s). Returns the live per-run tree: the fast agent's chunks with their
+    // titles and found-counts, then the strong agent's item count once its call lands.
+    [HttpGet, Route("measure/status/{jobId}")]
+    public IActionResult MeasureStatus(string jobId)
+    {
+        var job = _measureJobs.Get(jobId);
+        if (job is null) return NotFound();
+        lock (job.Lock)
+            return Json(new
+            {
+                status = job.Status.ToString(),
+                error = job.Error,
+                runs = job.RunStates
+                    .OrderBy(r => r.Filing).ThenBy(r => r.Run)
+                    .Select(r => new
+                    {
+                        r.Filing, r.Run, r.Phase, r.WorkerItems, r.Errors, r.LeadItems,
+                        chunksTotal = r.Chunks.Count,
+                        chunksDone = r.Chunks.Count(c => c.Status is "Done" or "Error"),
+                        chunks = r.Chunks.Select(c => new { c.Titles, c.Status, c.Found }),
+                    }),
+            });
+    }
+
+    // The finished batch, rendered by the same view the form lives on. A GET so the results page can
+    // be reloaded, linked and kept while the annotations are made.
+    [HttpGet, Route("measure/result/{jobId}")]
+    public IActionResult MeasureResult(string jobId)
+    {
+        var job = _measureJobs.Get(jobId);
+        if (job is null) return NotFound();
+        lock (job.Lock)
+            return View("Measure", new MeasureViewModel
+            {
+                Runs = job.Runs,
+                Results = job.Results.ToList(),
+                RowsJson = job.RowsJson,
+            });
+    }
+
     // Mode B — AI reads one filing and proposes revenue rows + their proof for the human to
     // confirm. Persists nothing; the page fills the form and the existing save path freezes proof.
     [HttpPost, Route("auto-extract/{companyId:long}")]
@@ -320,7 +456,9 @@ public class ExtractionController : Controller
         try
         {
             var result = await _extractor.ScanAutoAsync(companyId, accession, doc, ParseNode(node), form);
-            return Json(result);
+            // Project without Digest: it is for in-process callers (the measurement harness), and the
+            // browser has no use for a multi-KB grounding blob on every scan.
+            return Json(new { result.Scanned, result.Found, result.Headings });
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {

@@ -15,10 +15,14 @@ public interface IExtractionChatService
     // handoff=true marks this turn as a cross-segment hand-off being RECEIVED: ground only on cached
     // findings (no worker fan-out — the source agent already found the fact) AND use the receiver
     // system prompt (record it, don't re-route, null values OK). See docs/extraction/cross-extraction.md.
+    // grounding: use THIS worker digest instead of resolving one (cache, or a fresh scan). The
+    // measurement harness supplies it so N concurrent runs of one filing each ground on their OWN
+    // scan — they all share the one filing-findings cache key, so resolving from the cache would give
+    // a run whichever scan happened to finish last. null keeps the normal behaviour.
     IAsyncEnumerable<ChatDelta> StreamReplyAsync(
         long companyId, string accession, string doc, ExtractionNode node,
         IReadOnlyList<ChatMessage> history, string? filingType = null, bool handoff = false,
-        CancellationToken ct = default);
+        string? grounding = null, CancellationToken ct = default);
 
     // The structured audited XBRL facts for one filing+node — the same figures the chat grounding text
     // is built from, surfaced for the UI. Numeric nodes only (COST, REVENUE); null for RISK or when the

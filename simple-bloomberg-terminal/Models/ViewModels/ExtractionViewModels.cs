@@ -75,7 +75,12 @@ public record ExtractionSuggestion(
 /// <summary>Outcome of an auto-scan: how many headings the triage model chose to read in full, how
 /// many candidate rows the workers pulled from them, and every heading it was offered with whether it
 /// was picked — so the page can show the user what was triaged and what the AI selected.</summary>
-public record AutoScanResult(int Scanned, int Found, IReadOnlyList<ScannedHeading> Headings);
+/// <param name="Digest">The grounding text this scan produced, returned as well as cached. The
+/// measurement harness needs it in hand: it runs N scans of one filing concurrently, and they all
+/// share the one <c>filing-findings</c> cache key, so reading the digest back from the cache would
+/// hand a run whichever scan finished last.</param>
+public record AutoScanResult(
+    int Scanned, int Found, IReadOnlyList<ScannedHeading> Headings, string Digest = "");
 
 /// <summary>One heading the triage model saw, plus whether it chose to scan it.</summary>
 public record ScannedHeading(string Section, string Title, bool Picked);
@@ -263,4 +268,20 @@ public class ScanJobReplyRequest
 public class ScanHandoffRequest
 {
     public string Seed { get; set; } = "";
+}
+
+/// <summary>
+/// The measurement page. <see cref="Targets"/> is one filing per line, "companyId, accession, doc[,
+/// form]" — plain text rather than a repeating form because the batch is typed once, by hand, for a
+/// measurement run. <see cref="Results"/> is the per-filing summary the page renders as a paste-ready
+/// table; <see cref="RowsJson"/> is every item row as JSON, which the page turns into the annotation
+/// grid AND into the CSV. The CSV is built client-side because the `judgement` column is filled in
+/// the browser — one writer, in the only place that has the annotations.
+/// </summary>
+public class MeasureViewModel
+{
+    public string? Targets { get; set; }
+    public int Runs { get; set; } = 10;
+    public IReadOnlyList<Services.Extraction.FilingMeasurement> Results { get; set; } = [];
+    public string? RowsJson { get; set; }
 }

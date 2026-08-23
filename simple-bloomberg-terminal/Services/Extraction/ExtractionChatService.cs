@@ -59,6 +59,32 @@ public class ExtractionChatService : IExtractionChatService
         "counterparty in `related_company`, and still emit the save block. Then confirm in one sentence " +
         "what you saved.";
 
+    // The measurement mode. Appended to the COST lead prompt so the agent knows the ```ledger```
+    // format; it only ever FIRES when the harness sends LedgerPrompt verbatim, so ordinary chat turns
+    // are unaffected and the conversational prose stays exactly as it was.
+    //
+    // Why a second output mode instead of restructuring the chat reply: the free-form prose is what
+    // the human reviewer wants, but it is unmeasurable — style varies per run, so nothing can be
+    // diffed across runs. The ledger is the same turn's content in a fixed shape, so repeatability is
+    // a set-diff and groundedness is a substring test. Every column except `what` is a fact printed
+    // in the filing, which is what makes the 0.90 evidence check meaningful for all of them.
+    private const string LedgerSuffix =
+        "\n\nMEASUREMENT MODE. If (and only if) the user message is exactly \"" + LedgerPrompt + "\", " +
+        "ignore the conversational instructions above and reply with NOTHING but a fenced block:\n" +
+        "```ledger\n{\"items\":[{\"evidence\":\"\",\"counterparty\":\"\",\"direction\":\"SUPPLIER\"," +
+        "\"what\":\"\",\"value\":null,\"section\":\"\"}]}\n```\n" +
+        "One item per NAMED counterparty in the findings above — every one of them, not a selection. " +
+        "evidence is the VERBATIM quote from the findings naming that counterparty (copy it exactly; " +
+        "do not paraphrase, do not shorten mid-word). counterparty is the company name. direction is " +
+        "exactly one of SUPPLIER, CUSTOMER, PARTNER. what is a SHORT description of what is bought or " +
+        "sold. value is absolute US dollars or null when the filing states none. section is the SEC " +
+        "Item the finding came from. Never include a company that is not in the findings above. " +
+        "No prose before or after the block.";
+
+    // The one fixed user message the measurement harness sends. Byte-identical on every run — the
+    // whole point is that the ONLY thing varying between runs is the model.
+    public const string LedgerPrompt = "Emit the full counterparty ledger for this filing.";
+
     // The lead-analyst system prompt, tailored to the node being built. The save-block schema must
     // match what the page's normalizeSave() reads (revenue/cost: money fields; risk: scope + note).
     // handoff=true swaps the "emit a handoff" suffix for the "you are receiving one — record it" suffix.
@@ -67,29 +93,37 @@ public class ExtractionChatService : IExtractionChatService
 
     private static string BaseSystemFor(ExtractionNode node) => node switch
     {
+        // COST's unit is a NAMED COUNTERPARTY (see the worker prompt in FilingExtractionService for
+        // why the COGS/OPEX judgement was dropped from extraction). The ```save``` block below still
+        // speaks COGS/OPEX because CostSource.CostBase is a non-nullable enum column and the Company
+        // Facts path (StockService) writes it too — the bucket is DERIVED here (SUPPLIER => COGS),
+        // exactly as ContributionWriter and CounterpartyDiscoveryService already default it.
         ExtractionNode.COST =>
             "You are the lead financial analyst. Parallel worker agents have already scanned ONE SEC " +
-            "filing and reported the COST candidates below, each with the VERBATIM proof text they " +
-            "found. You are ALSO given the authoritative tagged XBRL figures for this filing's period. " +
-            "Ground every claim in those findings (or the raw excerpts, if findings are absent); if " +
-            "something isn't there, say so rather than guessing. The tagged XBRL figures are the " +
-            "audited numbers — PREFER them for `value`; use the workers' prose for the name, segment " +
-            "and supplier. When a prose figure disagrees with the tagged figure for the same line, " +
-            "flag it rather than silently choosing. Help the user review and decide which cost sources " +
-            "(cost lines, segments, key suppliers) and counterparty relationships to keep. Be concise.\n\n" +
-            "When the user wants to SAVE a specific cost, output a fenced block exactly like:\n" +
+            "filing and reported the COUNTERPARTY candidates below, each with the VERBATIM proof text " +
+            "they found. You are ALSO given the authoritative tagged XBRL figures for this filing's " +
+            "period. Ground every claim in those findings (or the raw excerpts, if findings are " +
+            "absent); if something isn't there, say so rather than guessing — never name a company " +
+            "that does not appear in the findings. The tagged XBRL figures are the audited numbers — " +
+            "PREFER them for `value`; use the workers' prose for the counterparty name and what is " +
+            "traded. When a prose figure disagrees with the tagged figure for the same line, flag it " +
+            "rather than silently choosing. Help the user review and decide which counterparty " +
+            "relationships to keep. Be concise.\n\n" +
+            "When the user wants to SAVE a specific counterparty, output a fenced block exactly like:\n" +
             "```save\n{\"name\":\"\",\"classification\":\"COGS\",\"value\":null,\"percentage\":null," +
             "\"related_company\":null,\"related_company_ticker\":null,\"reference\":null," +
             "\"evidence\":\"\"}\n```\n" +
-            "classification is exactly one of COGS, OPEX, TOTAL_COSTS. value is absolute US dollars " +
-            "(prefer the tagged XBRL figure; scale any 'in thousands/millions'); percentage is 0-100; " +
-            "use null when not stated. related_company is a named supplier/counterparty (else null); " +
-            "when it's a publicly traded company you can identify, also set related_company_ticker to " +
-            "its stock ticker (else null) so it can be enriched. reference is the verbatim passage " +
-            "(name the SEC Item or note, then the source text) this whole cost record was drawn from. " +
-            "evidence is ONE VERBATIM excerpt substring backing this record — quote enough to identify " +
-            "any figure you report. Emit one save block per cost the user confirms, alongside your " +
-            "normal reply.",
+            "name is the counterparty's company name. classification is the accounting bucket the " +
+            "spend falls in, exactly one of COGS, OPEX, TOTAL_COSTS — use COGS for a supplier of " +
+            "goods or production services, OPEX for a supplier of overhead services. value is absolute " +
+            "US dollars (prefer the tagged XBRL figure; scale any 'in thousands/millions'); percentage " +
+            "is 0-100; use null when not stated. related_company is the same counterparty name; when " +
+            "it's a publicly traded company you can identify, also set related_company_ticker to its " +
+            "stock ticker (else null) so it can be enriched. reference is the verbatim passage (name " +
+            "the SEC Item or note, then the source text) this record was drawn from. evidence is ONE " +
+            "VERBATIM excerpt substring backing this record — quote enough to identify any figure you " +
+            "report. Emit one save block per counterparty the user confirms, alongside your normal " +
+            "reply." + LedgerSuffix,
 
         ExtractionNode.RISK =>
             "You are the lead financial analyst. Parallel worker agents have already scanned ONE SEC " +
@@ -137,18 +171,20 @@ public class ExtractionChatService : IExtractionChatService
     public async IAsyncEnumerable<ChatDelta> StreamReplyAsync(
         long companyId, string accession, string doc, ExtractionNode node,
         IReadOnlyList<ChatMessage> history, string? filingType = null, bool handoff = false,
-        [EnumeratorCancellation] CancellationToken ct = default)
+        string? grounding = null, [EnumeratorCancellation] CancellationToken ct = default)
     {
         // The parallel worker scan runs (once per filing) before the main agent can answer — tell the
         // user so the first turn isn't a silent wait while 36 chunks fan out. A hand-off never scans
         // (the source agent already found the fact), so it never shows this status.
         var hasFiling = !string.IsNullOrWhiteSpace(accession) && !string.IsNullOrWhiteSpace(doc);
-        if (hasFiling && !handoff && !_cache.TryGetValue(FilingExtractionService.FindingsKey(accession, doc, node), out _))
+        if (hasFiling && grounding is null && !handoff &&
+            !_cache.TryGetValue(FilingExtractionService.FindingsKey(accession, doc, node), out _))
             yield return new ChatDelta("status", "Scanning the filing with parallel worker agents…");
 
-        var grounding = await GroundingAsync(companyId, accession, doc, node, filingType, scanIfMissing: !handoff, ct);
+        var context = await GroundingAsync(
+            companyId, accession, doc, node, filingType, scanIfMissing: !handoff, grounding, ct);
 
-        var messages = new List<DeepSeekMessage> { new("system", SystemFor(node, handoff) + grounding) };
+        var messages = new List<DeepSeekMessage> { new("system", SystemFor(node, handoff) + context) };
         foreach (var m in history)
             messages.Add(new DeepSeekMessage(m.Role == "assistant" ? "assistant" : "user", m.Content));
 
@@ -164,13 +200,17 @@ public class ExtractionChatService : IExtractionChatService
     // filing's period (the "calculator" the agent should prefer over any number it read in the prose).
     private async Task<string> GroundingAsync(
         long companyId, string accession, string doc, ExtractionNode node, string? filingType,
-        bool scanIfMissing, CancellationToken ct)
+        bool scanIfMissing, string? digestOverride, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(accession) || string.IsNullOrWhiteSpace(doc)) return "";
 
+        // An explicit digest wins outright — including an EMPTY one, which legitimately means "this
+        // run's scan found nothing" and must not silently fall back to another run's cached findings.
         // scanIfMissing=false (hand-off): read whatever the workers already cached for this segment, but
         // never fan out a fresh scan — the source agent already found the fact we're recording.
-        var digest = scanIfMissing
+        var digest = digestOverride is not null
+            ? digestOverride
+            : scanIfMissing
             ? await _scan.GetOrScanDigestAsync(companyId, accession, doc, node, filingType, ct)
             : _cache.TryGetValue(FilingExtractionService.FindingsKey(accession, doc, node), out string? cached) ? (cached ?? "") : "";
         var prose = !string.IsNullOrEmpty(digest)

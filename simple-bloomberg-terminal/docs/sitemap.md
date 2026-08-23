@@ -1142,6 +1142,66 @@
 
 ---
 
+## /extraction/measure
+
+| Field | Value |
+|---|---|
+| Controller | ExtractionController |
+| Action | Measure |
+| HTTP | GET |
+| Route source | `[Route("extraction")]` + `[Route("measure")]` |
+| View | Views/Extraction/Measure.cshtml |
+| Parameters | companyId: long? (query, optional); accession: string? (query, optional); doc: string? (query, optional); form: string? (query, optional — SEC form type, e.g. `10-K`) — when companyId, accession and doc are all supplied the view model's `Targets` textarea is prefilled with a single target line `companyId, accession, doc[, form]`, otherwise the page renders an empty `MeasureViewModel` |
+| Auth | `[Authorize]` (class-level — any authenticated user) |
+| Notes | The form only — reached blank from the URL, or deep-linked from the "MEASURE AGENT →" button in a company's COST SOURCES section (Views/Companies/Details.cshtml) — that button reuses the existing "extract from filings" filing-picker modal (`js-extract-filings` plus `data-measure="1"`) and, in measure mode, navigates to `/extraction/measure?companyId=…&accession=…&doc=…[&form=…]` instead of POSTing a real scan, so the chosen filing arrives prefilled as a target line and the accession/doc never have to be copied by hand; more lines can still be added before running. The page no longer POSTs to this URL: the blocking `POST /extraction/measure` (which held the request open for the minutes the batch takes) is gone, replaced by the detached `measure/start` + `measure/status` + `measure/result` trio, so the "Run measurement" button starts a job and the page shows a live per-run tracker instead. READ-ONLY — persists nothing to the database. ViewModel: `MeasureViewModel` |
+
+---
+
+## /extraction/measure/start
+
+| Field | Value |
+|---|---|
+| Controller | ExtractionController |
+| Action | MeasureStart (async) |
+| HTTP | POST |
+| Route source | `[Route("extraction")]` + `[Route("measure/start")]` (ValidateAntiForgeryToken) |
+| View | — (JSON `{ jobId }`) |
+| Parameters | JSON body (`MeasureViewModel`) — targets: string? (one filing per line, `companyId, accession, doc[, form]`), runs: int (clamped to 2–20) |
+| Auth | `[Authorize]` (class-level — any authenticated user); also requires the user's configured parsing-provider API key (`RequireParsingKey`, else `MissingApiKeyException`) |
+| Notes | Detached, like `scan-auto-async` — the batch runs for minutes, so holding the request open would leave the page nothing to show and would die to any proxy timeout. Parses the target lines, registers a `MeasureJob` in the singleton in-memory `MeasureJobStore` (Services/Extraction/MeasureJobStore.cs), fires the run on a background `Task` with its OWN DI scope (the request scope and its DbContext are gone the moment this returns, and the user's API keys are snapshotted onto the new scope), and returns the `jobId` at once for the tracker to poll. Malformed target lines are skipped and a single filing's failure is caught per-line and recorded as a `failed` row rather than voiding the batch. READ-ONLY — persists nothing to the database. Responses: 200 OK (`{ jobId }`); 400 (no valid target lines) |
+
+---
+
+## /extraction/measure/status/{jobId}
+
+| Field | Value |
+|---|---|
+| Controller | ExtractionController |
+| Action | MeasureStatus |
+| HTTP | GET |
+| Route source | `[Route("extraction")]` + `[Route("measure/status/{jobId}")]` |
+| View | — (JSON `{ status, error, runs: [{ filing, run, phase, workerItems, errors, leadItems, chunksTotal, chunksDone, chunks: [{ titles, status, found }] }] }`) |
+| Parameters | jobId: string (route) |
+| Auth | `[Authorize]` (class-level — any authenticated user) |
+| Notes | Polled ~1s by the live tracker on Views/Extraction/Measure.cshtml, which draws one block per (filing, run): the fast-worker chunk tree (each chunk's titles, status and found-count, plus a done/total progress figure) and then the lead agent's item count once its call lands. Kept deliberately cheap — the status DTO carries counts and titles only, never evidence text or the finished rows. The tracker redirects to `measure/result/{jobId}` on `status === "Done"` and stops on `"Error"`. Responses: 200 OK; 404 (unknown jobId) |
+
+---
+
+## /extraction/measure/result/{jobId}
+
+| Field | Value |
+|---|---|
+| Controller | ExtractionController |
+| Action | MeasureResult |
+| HTTP | GET |
+| Route source | `[Route("extraction")]` + `[Route("measure/result/{jobId}")]` |
+| View | Views/Extraction/Measure.cshtml (same view as the form, rendered with the finished `MeasureViewModel`) |
+| Parameters | jobId: string (route) |
+| Auth | `[Authorize]` (class-level — any authenticated user) |
+| Notes | The finished batch for the COST extraction lead agent: (a) a per-filing summary table (chunks, worker candidates, mean items/run, retention %, repeatability %, groundedness %) and (b) one CSV result sheet (built client-side from the job's `RowsJson`, one row per filing+run+item) carrying a blank `judgement` column for the manual precision pass; the CSV downloads from a Blob, so there is no download endpoint. A GET on purpose, so the results page can be reloaded, linked and kept open while the annotations are made. READ-ONLY. Responses: 200 OK; 404 (unknown jobId). ViewModel: `MeasureViewModel` |
+
+---
+
 ## /extraction/auto-extract/{companyId}
 
 | Field | Value |
@@ -1184,6 +1244,21 @@
 
 ---
 
+## /extraction/scan-handoff/{companyId}
+
+| Field | Value |
+|---|---|
+| Controller | ExtractionController |
+| Action | ScanHandoff |
+| HTTP | POST |
+| Route source | `[Route("extraction")]` + `[Route("scan-handoff/{companyId:long}")]` |
+| View | — (JSON `{ jobId }`) |
+| Parameters | companyId: long (route, constrained); accession: string (query, required); doc: string (query, required); node: string? (query — the TARGET segment `REVENUE`\|`COST`\|`RISK`, default `REVENUE`); form: string? (query — SEC form type); companyName: string? (query); filingLabel: string? (query); JSON body — `{ seed }` (required) |
+| Auth | `[Authorize]` (class-level, any authenticated user) + a configured parsing-provider key (`RequireParsingKey`, else 424 `MISSING_KEY`) |
+| Notes | Cross-segment hand-off: one segment's analyst found a fact belonging to ANOTHER segment and emitted a ```handoff``` block, which the browser turns into this call. Registers a detached `ScanJob` and runs the TARGET segment's agent in receiver mode (`handoff: true` — ground only on cached findings, no worker fan-out, record rather than re-route), seeded with `req.Seed`: the instruction plus the verbatim source passage, since the receiving analyst cannot see the source segment's text. Returns the `jobId` at once; the notification widget polls `scan-jobs`. Persists nothing to the DB. Responses: 200 OK (`{ jobId }`); 400 (missing accession/doc, or missing seed); 404 (no such company); 424 (missing API key). See docs/extraction/cross-extraction.md |
+
+---
+
 ## /extraction/scan-jobs
 
 | Field | Value |
@@ -1195,6 +1270,20 @@
 | View | — (JSON array of jobs: `{ id, status, companyId, companyName, accession, doc, node, form, filingLabel, found, summary, error, replying }`) |
 | Parameters | ids: string? (query string — comma-separated job ids the browser is tracking) |
 | Notes | Returns the status/found-count/AI summary of the background jobs whose ids the browser holds (in localStorage). Resolves each id against both the `ScanJobStore` and the `RediscoverJobStore`, MERGING filing-scan and private-company re-discovery jobs into one list — each entry carries a `kind` (`"scan"` or `"rediscover"`) so the widget can tell a chat-capable scan from a fire-and-forget re-discovery. Unknown/dismissed ids are skipped. Backs the global bottom-right notification widget, which shows the summary and links back to `/extraction` to save the yielded objects |
+
+---
+
+## /extraction/scan-jobs/{jobId}/chunk/{index}
+
+| Field | Value |
+|---|---|
+| Controller | ExtractionController |
+| Action | ScanJobChunk |
+| HTTP | GET |
+| Route source | `[Route("extraction")]` + `[Route("scan-jobs/{jobId}/chunk/{index:int}")]` |
+| View | — (JSON `{ titles, status, found, prompt, response }`) |
+| Parameters | jobId: string (route); index: int (route, constrained — the chunk's position in the job's flat `ChunkList`, i.e. the `idx` the status DTO hands the widget) |
+| Notes | "Under the hood" inspector for one worker agent: the verbatim prompt it saw (system + user) and its raw reply. Fetched lazily when the user expands a chunk row in the notification widget, so the heavy excerpt text never rides the 2s status poll. Responses: 200 OK; 404 (unknown job, or index out of range) |
 
 ---
 
@@ -1712,7 +1801,7 @@ ASP.NET Core Identity now gates the existing controllers as follows:
 - **MVC entity controllers** (Countries, Companies, Events, TradeBlocs, CountryDetails, CountryAdvantages, CountryChallenges, GdpSnapshots, RevenueSources, CostSources, Indices): read GETs (`Index`/`Search`/`Details`/`Lookup`/`ValidateCountry` and the like) are `[AllowAnonymous]`; `Create`/`Edit`/`Delete` (and the other mutating actions) require `[Authorize(Roles = "Admin,Manager")]`.
 - **API controllers** (Controllers/Api — GraphController, StockController, CompanyRisks, CompanyFinancials, Filings, Scenarios, ScenarioShocks): `GET` requires `[Authorize]` (any authenticated user); `POST`/`PUT`/`DELETE` require `[Authorize(Roles = "Admin,Manager")]`.
 - **Public** (no auth): Home, Ticker, Graph, Impact.
-- **ExtractionController**: `[Authorize(Roles = "Admin,Manager")]` for the whole controller.
+- **ExtractionController**: `[Authorize]` for the whole controller — ANY authenticated user. The keyed AI features run on the user's own stored API keys (bring-your-own), so a signed-in customer can use them without a role; a missing key surfaces the "add your key" popup instead of a 403. The reviewer role is applied per-write instead of per-controller: `IsReviewer` (Admin or Manager) decides whether a saved row goes live (Approved) or is held as a Pending contribution.
 - **AccountController**: `[Authorize]` (any authenticated user).
 - **AdminController**: `[Authorize(Roles = "Admin")]`.
 

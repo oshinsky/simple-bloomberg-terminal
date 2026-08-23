@@ -479,6 +479,10 @@
                 <span>SUPPLIERS BY SEGMENT (PERPLEXITY SONAR)</span>
                 <span style="display:flex;gap:.5rem;">
                     <button type="button" class="btn-detail js-extract-filings" data-company="@co.Id" data-node="COST">EXTRACT FROM FILINGS →</button>
+                    @* Same filing picker, but the chosen filing is handed to the measurement harness
+                       instead of being scanned for real. Keeps the js-extract-filings class so the
+                       sign-in guard in site.js covers it too. *@
+                    <button type="button" class="btn-detail js-extract-filings" data-company="@co.Id" data-node="COST" data-measure="1">MEASURE AGENT →</button>
                     <button type="button" class="btn-detail js-discover" data-company="@co.Id" data-side="SUPPLIER"
                             data-table="costTable" data-results="costDiscoverResults">DISCOVER SUPPLIERS →</button>
                     <button type="button" class="btn-detail js-discover" data-company="@co.Id" data-side="SUPPLIER" data-valued="true"
@@ -1121,12 +1125,16 @@ window.refreshCompanyProfile = async function (companyId) {
     let extSel = null;         // the one filing the user selected
     let extNode = 'REVENUE';   // node this run extracts (set by the clicked button)
     let extCompany = 0;
+    let extMeasure = false;    // picked filing goes to the measurement harness, not a real scan
+    const extStartLabel = extStart.textContent;
 
     function closeExt() { extModal.hidden = true; }
 
-    function openExt(companyId, node) {
+    function openExt(companyId, node, measure) {
         extCompany = companyId; extNode = node; extSel = null; extAll = [];
-        document.getElementById('extxNode').textContent = node;
+        extMeasure = !!measure;
+        extStart.textContent = extMeasure ? 'MEASURE →' : extStartLabel;
+        document.getElementById('extxNode').textContent = extMeasure ? node + ' · MEASURE' : node;
         extFilter.value = ''; extStart.disabled = true; extStatus.textContent = '';
         document.getElementById('extxCount').textContent = 'loading…';
         extGrid.innerHTML = ''; document.getElementById('extxEmpty').hidden = true;
@@ -1167,6 +1175,16 @@ window.refreshCompanyProfile = async function (companyId) {
 
     extStart.addEventListener('click', async () => {
         if (!extSel) return;
+
+        // Measurement mode: hand the filing to /extraction/measure, which prefills its Targets box.
+        // A plain navigation, not a POST — the run is long and its results are a full page.
+        if (extMeasure) {
+            const mq = `companyId=${extCompany}&accession=${encodeURIComponent(extSel.accessionNumber)}` +
+                `&doc=${encodeURIComponent(extSel.primaryDocument)}&form=${encodeURIComponent(extSel.form || '')}`;
+            window.location.href = `/extraction/measure?${mq}`;
+            return;
+        }
+
         const filingLabel = `${extSel.form || 'filing'} ${extSel.filingDate || ''}`.trim();
         const qs = `accession=${encodeURIComponent(extSel.accessionNumber)}&doc=${encodeURIComponent(extSel.primaryDocument)}` +
             `&node=${extNode}&form=${encodeURIComponent(extSel.form || '')}` +
@@ -1193,7 +1211,7 @@ window.refreshCompanyProfile = async function (companyId) {
     extModal.querySelectorAll('[data-extx-close]').forEach(el => el.addEventListener('click', closeExt));
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && !extModal.hidden) closeExt(); });
     document.querySelectorAll('.js-extract-filings').forEach(btn =>
-        btn.addEventListener('click', () => openExt(Number(btn.dataset.company), btn.dataset.node)));
+        btn.addEventListener('click', () => openExt(Number(btn.dataset.company), btn.dataset.node, btn.dataset.measure === '1')));
 })();
 </script>
 }
