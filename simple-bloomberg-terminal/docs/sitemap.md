@@ -1198,7 +1198,7 @@
 | View | Views/Extraction/Measure.cshtml (same view as the form, rendered with the finished `MeasureViewModel`) |
 | Parameters | jobId: string (route) |
 | Auth | `[Authorize]` (class-level — any authenticated user) |
-| Notes | The finished batch for the COST extraction lead agent: (a) a per-filing summary table (chunks, worker candidates, mean items/run, retention %, repeatability %, groundedness %) and (b) one CSV result sheet (built client-side from the job's `RowsJson`, one row per filing+run+item) carrying a blank `judgement` column for the manual precision pass; the CSV downloads from a Blob, so there is no download endpoint. A GET on purpose, so the results page can be reloaded, linked and kept open while the annotations are made. READ-ONLY. Responses: 200 OK; 404 (unknown jobId). ViewModel: `MeasureViewModel` |
+| Notes | The finished batch for the COST extraction lead agent: (a) a per-filing summary table (chunks, worker candidates, mean items/run, retention %, repeatability %, evidence presence %) and (b) one CSV result sheet (built client-side from the job's `RowsJson`, one row per filing+run+item) carrying a blank `judgement` column for the manual precision pass; the CSV downloads from a Blob, so there is no download endpoint. A GET on purpose, so the results page can be reloaded, linked and kept open while the annotations are made. READ-ONLY. Responses: 200 OK; 404 (unknown jobId). ViewModel: `MeasureViewModel` |
 
 ---
 

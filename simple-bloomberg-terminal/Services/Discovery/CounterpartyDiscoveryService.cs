@@ -14,10 +14,10 @@ using simple_bloomberg_terminal.Repositories;
 namespace simple_bloomberg_terminal.Services.Discovery;
 
 // Perplexity request shape: OpenAI-compatible plus web_search_options (Perplexity-only). Kept separate
-// from DeepSeekRequest so a DeepSeek call never carries a Perplexity field. Reuses DeepSeekMessage.
+// from the parsing transport so its requests never carry Perplexity-only fields. Reuses LlmMessage.
 public record PerplexityRequest(
     string Model,
-    List<DeepSeekMessage> Messages,
+    List<LlmMessage> Messages,
     [property: JsonPropertyName("max_tokens"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? MaxTokens,
     [property: JsonPropertyName("web_search_options")] PerplexityWebSearchOptions? WebSearchOptions = null);
 
@@ -215,7 +215,7 @@ public class CounterpartyDiscoveryService : ICounterpartyDiscovery
         return (Parse(answer, supplier, citations, companySnapshot), citations);
     }
 
-    // One Perplexity /chat/completions turn. Parses the envelope by hand (not the typed DeepSeekResponse):
+    // One Perplexity /chat/completions turn. Parses the envelope by hand because citations are custom:
     // sonar-pro cites sources with numbered markers like "[10]" in the content and puts the real URLs in
     // a top-level "citations" array, so callers get both the answer text and that array to resolve them.
     private async Task<(string answer, List<string> citations)> CallAsync(
@@ -226,7 +226,7 @@ public class CounterpartyDiscoveryService : ICounterpartyDiscovery
         var model = (await _keys.GetAsync(ct)).WebSearchModel ?? ChatProviders.DefaultWebSearchModel;
         var req = new PerplexityRequest(
             Model: model,
-            Messages: [new DeepSeekMessage("system", system), new DeepSeekMessage("user", user)],
+            Messages: [new LlmMessage("system", system), new LlmMessage("user", user)],
             MaxTokens: maxTokens,
             WebSearchOptions: new PerplexityWebSearchOptions(contextSize));
 

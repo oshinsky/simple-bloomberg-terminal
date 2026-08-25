@@ -60,7 +60,7 @@ public class CompanyProfileDiscoveryService : ICompanyProfileDiscovery
         var model = (await _keys.GetAsync(ct)).WebSearchModel ?? ChatProviders.DefaultWebSearchModel;
         var req = new PerplexityRequest(
             Model: model,
-            Messages: [new DeepSeekMessage("system", system), new DeepSeekMessage("user", user)],
+            Messages: [new LlmMessage("system", system), new LlmMessage("user", user)],
             MaxTokens: 1200,
             // "high" pulls more (primary) source content before answering — slower but the figures are
             // better grounded, which matters here since the result is saved, not just reviewed.

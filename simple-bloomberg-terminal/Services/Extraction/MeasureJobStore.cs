@@ -13,7 +13,7 @@ public record MeasureProgress(
     IReadOnlyList<ScanChunkInfo>? Plan = null,
     int ChunkIndex = -1, int Found = 0,
     int WorkerItems = 0, int LeadItems = 0,
-    string Filing = "");
+    string Filing = "", string? Error = null);
 
 /// <summary>One run's live state: the fast agent's per-chunk tree, then the strong agent's result.
 /// <see cref="ScanChunkState"/> is reused from the scan widget — same shape, same meaning.</summary>
@@ -37,6 +37,7 @@ public class MeasureJob
 {
     public string Id { get; init; } = Guid.NewGuid().ToString("n");
     public int Runs { get; init; }
+    public bool StrictCounterparties { get; init; }
     public MeasureJobStatus Status { get; set; } = MeasureJobStatus.Running;
     public string? Error { get; set; }
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
@@ -84,7 +85,11 @@ public class MeasureJob
                     break;
 
                 case "chunk-error":
-                    if (Chunk(state, p.ChunkIndex) is { } failed) failed.Status = "Error";
+                    if (Chunk(state, p.ChunkIndex) is { } failed)
+                    {
+                        failed.Status = "Error";
+                        failed.Response = p.Error ?? "Unknown worker error.";
+                    }
                     state.Errors++;
                     break;
 

@@ -66,18 +66,17 @@ public class ExtractionChatService : IExtractionChatService
     // Why a second output mode instead of restructuring the chat reply: the free-form prose is what
     // the human reviewer wants, but it is unmeasurable — style varies per run, so nothing can be
     // diffed across runs. The ledger is the same turn's content in a fixed shape, so repeatability is
-    // a set-diff and groundedness is a substring test. Every column except `what` is a fact printed
-    // in the filing, which is what makes the 0.90 evidence check meaningful for all of them.
+    // a set-diff and evidence presence is a substring test.
     private const string LedgerSuffix =
         "\n\nMEASUREMENT MODE. If (and only if) the user message is exactly \"" + LedgerPrompt + "\", " +
         "ignore the conversational instructions above and reply with NOTHING but a fenced block:\n" +
         "```ledger\n{\"items\":[{\"evidence\":\"\",\"counterparty\":\"\",\"direction\":\"SUPPLIER\"," +
-        "\"what\":\"\",\"value\":null,\"section\":\"\"}]}\n```\n" +
+        "\"what\":\"\",\"section\":\"\"}]}\n```\n" +
         "One item per NAMED counterparty in the findings above — every one of them, not a selection. " +
         "evidence is the VERBATIM quote from the findings naming that counterparty (copy it exactly; " +
         "do not paraphrase, do not shorten mid-word). counterparty is the company name. direction is " +
         "exactly one of SUPPLIER, CUSTOMER, PARTNER. what is a SHORT description of what is bought or " +
-        "sold. value is absolute US dollars or null when the filing states none. section is the SEC " +
+        "sold. section is the SEC " +
         "Item the finding came from. Never include a company that is not in the findings above. " +
         "No prose before or after the block.";
 
@@ -184,9 +183,9 @@ public class ExtractionChatService : IExtractionChatService
         var context = await GroundingAsync(
             companyId, accession, doc, node, filingType, scanIfMissing: !handoff, grounding, ct);
 
-        var messages = new List<DeepSeekMessage> { new("system", SystemFor(node, handoff) + context) };
+        var messages = new List<LlmMessage> { new("system", SystemFor(node, handoff) + context) };
         foreach (var m in history)
-            messages.Add(new DeepSeekMessage(m.Role == "assistant" ? "assistant" : "user", m.Content));
+            messages.Add(new LlmMessage(m.Role == "assistant" ? "assistant" : "user", m.Content));
 
         // No maxTokens → the lead-analyst reply runs to the model's own ceiling instead of being cut
         // off mid-answer at a fixed cap.

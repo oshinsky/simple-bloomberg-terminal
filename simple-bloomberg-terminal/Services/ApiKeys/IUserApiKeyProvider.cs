@@ -9,7 +9,7 @@ public record UserApiKeys(
     string? DeepSeek, string? Fmp, string? Perplexity,
     string? Kimi = null, string? OpenAi = null, string? Anthropic = null,
     ChatProviderId ParsingProvider = ChatProviderId.DeepSeek,
-    string? ParsingModel = null, string? WebSearchModel = null)
+    string? WebSearchModel = null)
 {
     public static readonly UserApiKeys Empty = new(null, null, null);
 
@@ -44,7 +44,7 @@ public interface IUserApiKeyProvider
 
 /// <summary>
 /// One API-keys page submission. Per key: a new value (blank = keep existing) or a clear flag. Plus
-/// the model-routing choices, which are always overwritten with whatever the form posted.
+/// the provider-routing choices, which are always overwritten with whatever the form posted.
 /// </summary>
 public record ApiKeyEdit(
     string? DeepSeek, bool ClearDeepSeek,
@@ -54,7 +54,7 @@ public record ApiKeyEdit(
     string? OpenAi = null, bool ClearOpenAi = false,
     string? Anthropic = null, bool ClearAnthropic = false,
     ChatProviderId ParsingProvider = ChatProviderId.DeepSeek,
-    string? ParsingModel = null, string? WebSearchModel = null);
+    string? WebSearchModel = null);
 
 public static class UserApiKeyProviderExtensions
 {

@@ -80,7 +80,7 @@ public class FilingExtractionService : IFilingExtractionService
     // classification is a judgement and there is nothing in the filing to quote for it. A schema that
     // demands impossible data gets fabricated data. Note that the quote-first discipline above comes
     // from evidence being FIRST, not from it being split — so none of it is lost.
-    private static string SystemFor(ExtractionNode node) => node switch
+    private static string SystemFor(ExtractionNode node, bool strictCounterparties = false) => node switch
     {
         // COST is COUNTERPARTY extraction, not accounting-bucket extraction. The unit is a named
         // company the filer transacts with, plus what it supplies and what that costs.
@@ -101,30 +101,40 @@ public class FilingExtractionService : IFilingExtractionService
             "foundry, contract producer, distributor, reseller, customer, licensor/licensee, or " +
             "joint-venture / commercial partner. Return ONLY counterparties clearly named in THIS " +
             "excerpt — do not guess, do not carry over outside knowledge, and never invent a company " +
-            "name. A relationship counts even when the excerpt states NO dollar figure; the figure is " +
-            "optional, the named company is not. Do NOT return a company named only as a competitor " +
+            "name. Do NOT return a company named only as a competitor " +
             "or as a litigation adversary — those are not commercial counterparties.\n" +
             "For each counterparty provide: name (the counterparty's company name exactly as written), " +
             "related_company (the same name again), classification (the direction of trade, exactly " +
             "one of SUPPLIER — they sell to the filer, CUSTOMER — they buy from the filer, PARTNER — " +
             "joint venture / collaboration with no clear direction), note (SHORT plain description of " +
-            "what is bought or sold, e.g. 'wafer fabrication', 'cloud capacity', 'retail distribution'), " +
-            "value (the amount in absolute US dollars if this excerpt states one for this " +
-            "relationship — scale any 'in thousands/millions' to the full number; null if not stated), " +
-            "percentage (share of total cost or revenue 0-100, null if not stated). Write 'evidence' " +
+            "what is bought or sold, e.g. 'wafer fabrication', 'cloud capacity', 'retail distribution'). " +
+            "Write 'evidence' " +
             "FIRST, before the fields it backs: ONE VERBATIM substring of this excerpt naming this " +
-            "counterparty, then fill the fields to match what you quoted. Quote enough to identify any " +
-            "figure you report — for a table row that means its row label, its units and its column " +
-            "header.\n" +
+            "counterparty, then fill the fields to match what you quoted.\n" +
             "Example of the shape (illustrative only — these companies are fictional, never return " +
             "them): {\"sources\":[{\"evidence\":\"We purchase substantially all of our castings from " +
             "Acme Foundry Ltd. under a supply agreement.\",\"name\":\"Acme Foundry Ltd.\"," +
             "\"related_company\":\"Acme Foundry Ltd.\",\"classification\":\"SUPPLIER\",\"note\":" +
-            "\"metal castings\",\"value\":null,\"percentage\":null}]}\n" +
+            "\"metal castings\"}]}\n" +
             "Reply with JSON only, no prose, no code fences: " +
             "{\"sources\":[{\"evidence\":\"\",\"name\":\"\",\"related_company\":\"\"," +
-            "\"classification\":\"\",\"note\":null,\"value\":null,\"percentage\":null}]}. If the " +
-            "excerpt names no counterparty, reply {\"sources\":[]}.",
+            "\"classification\":\"\",\"note\":null}]}. If the " +
+            "excerpt names no counterparty, reply {\"sources\":[]}." +
+            (strictCounterparties
+                ? "\nSTRICT COUNTERPARTY MODE. A company qualifies only when this excerpt explicitly " +
+                  "establishes a transaction or concrete commercial collaboration with the filer. " +
+                  "Return SUPPLIER only when the excerpt explicitly says the filer purchases, sources, " +
+                  "obtains, licenses, or receives goods or services from that named company. Return " +
+                  "PARTNER only for an explicit joint venture, co-development arrangement, licensing " +
+                  "relationship, strategic collaboration, or other concrete commercial cooperation. " +
+                  "Do not infer a relationship merely because the filer monitors a company's product " +
+                  "introduction cycles, calls it an industry leader, uses or mentions its products, " +
+                  "chips, components, or technology, develops compatible products, or lists it among " +
+                  "manufacturers or market participants. A named company in a list is not a counterparty " +
+                  "unless the same sentence or its immediate context explicitly establishes the " +
+                  "relationship for that company. When the evidence proves only a company mention and " +
+                  "not the claimed relationship, omit it. If uncertain, omit it."
+                : ""),
 
         ExtractionNode.RISK =>
             "You extract RISKS a single US public company discloses, from one excerpt of its SEC " +
@@ -184,7 +194,7 @@ public class FilingExtractionService : IFilingExtractionService
         var raw = await FetchRawAsync(companyId, accession, doc, filingType, ct);
         if (raw is null) return [];
         return await ScanChunksAsync(
-            FilingSections.Build(raw, FilingSections.ItemsFor(node, filingType)), node, null, ct);
+            FilingSections.Build(raw, FilingSections.ItemsFor(node, filingType)), node, null, false, ct);
     }
 
     // The chat's grounding digest: cached per filing; built by the auto-scan on a miss (heading triage
@@ -212,7 +222,8 @@ public class FilingExtractionService : IFilingExtractionService
     // scan only those in parallel and stash the digest as the chat's grounding. No user picking.
     public async Task<AutoScanResult> ScanAutoAsync(
         long companyId, string accession, string doc, ExtractionNode node, string? filingType = null,
-        Action<ScanProgress>? onProgress = null, CancellationToken ct = default)
+        Action<ScanProgress>? onProgress = null, bool strictCounterparties = false,
+        CancellationToken ct = default)
     {
         var headings = await GetOrParseHeadingsAsync(companyId, accession, doc, node, filingType, ct);
         var items = FilingSections.ItemsFor(node, filingType);
@@ -294,7 +305,9 @@ public class FilingExtractionService : IFilingExtractionService
         onProgress?.Invoke(new ScanProgress(ScanChunkPhase.Planned, -1, 0,
             chunks.Select((c, i) => new ScanChunkInfo(i, c.Item, c.Titles ?? [])).ToList()));
 
-        var findings = chunks.Count > 0 ? await ScanChunksAsync(chunks, node, onProgress, ct) : [];
+        var findings = chunks.Count > 0
+            ? await ScanChunksAsync(chunks, node, onProgress, strictCounterparties, ct)
+            : [];
         var digest = findings.Count > 0 ? FormatDigest(findings, node) : "";
         _cache.Set(FindingsKey(accession, doc, node), digest, CacheFor);
         return new AutoScanResult(chunks.Count, findings.Count, report, digest);
@@ -407,10 +420,12 @@ public class FilingExtractionService : IFilingExtractionService
 
     // Map/reduce over a given set of chunks: parallel Flash workers, then combine by name.
     private async Task<List<ExtractionSuggestion>> ScanChunksAsync(
-        IReadOnlyList<FilingChunk> chunks, ExtractionNode node, Action<ScanProgress>? onProgress, CancellationToken ct)
+        IReadOnlyList<FilingChunk> chunks, ExtractionNode node, Action<ScanProgress>? onProgress,
+        bool strictCounterparties, CancellationToken ct)
     {
         using var gate = new SemaphoreSlim(MaxParallel);
-        var perChunk = await Task.WhenAll(chunks.Select((c, i) => ScanChunkAsync(c, i, node, gate, onProgress, ct)));
+        var perChunk = await Task.WhenAll(chunks.Select((c, i) =>
+            ScanChunkAsync(c, i, node, gate, onProgress, strictCounterparties, ct)));
 
         var byName = new Dictionary<string, ExtractionSuggestion>(StringComparer.OrdinalIgnoreCase);
         foreach (var list in perChunk)
@@ -492,11 +507,11 @@ public class FilingExtractionService : IFilingExtractionService
     // Done/Error with the candidate count when it finishes.
     private async Task<List<ExtractionSuggestion>> ScanChunkAsync(
         FilingChunk chunk, int index, ExtractionNode node, SemaphoreSlim gate,
-        Action<ScanProgress>? onProgress, CancellationToken ct)
+        Action<ScanProgress>? onProgress, bool strictCounterparties, CancellationToken ct)
     {
         await gate.WaitAsync(ct);
         onProgress?.Invoke(new ScanProgress(ScanChunkPhase.Running, index, 0, null));
-        var system = SystemFor(node);
+        var system = SystemFor(node, strictCounterparties);
         var prompt = $"Section: {chunk.Section}\n\nExcerpt:\n\"\"\"\n{chunk.Text}\n\"\"\"";
         // The full transcript the worker saw — both halves, so the widget's inspector shows exactly
         // what was sent, not just the excerpt.
@@ -513,10 +528,10 @@ public class FilingExtractionService : IFilingExtractionService
             //   {"sources":[{"proof":{"name":"sales in EMEA","value":null
             // Raising it is close to free — it is a ceiling, not a spend, and unused tokens are never
             // billed — whereas setting it too low silently returns zero findings.
-            var completion = await _llm.CompleteDetailedAsync(
-                system, prompt, maxTokens: WorkerMaxTokens, jsonObject: true, fast: true, ct: ct);
+            var completion = await _llm.CompleteAsync(
+                new ChatRequest(system, prompt, WorkerMaxTokens, JsonObject: true, Fast: true), ct);
             var answer = completion.Content;
-            var found = Parse(answer, chunk.Section).ToList();
+            var found = Parse(answer, chunk.Section, node).ToList();
 
             // Retry exactly once when the provider confirms that generation hit the ceiling before
             // producing any usable JSON. Other malformed replies are not token-budget failures, and
@@ -526,11 +541,10 @@ public class FilingExtractionService : IFilingExtractionService
                 string.Equals(completion.FinishReason, "length", StringComparison.OrdinalIgnoreCase))
             {
                 retried = true;
-                completion = await _llm.CompleteDetailedAsync(
-                    system, prompt, maxTokens: WorkerRetryMaxTokens,
-                    jsonObject: true, fast: true, ct: ct);
+                completion = await _llm.CompleteAsync(
+                    new ChatRequest(system, prompt, WorkerRetryMaxTokens, JsonObject: true, Fast: true), ct);
                 answer = completion.Content;
-                found = Parse(answer, chunk.Section).ToList();
+                found = Parse(answer, chunk.Section, node).ToList();
             }
 
             // A reply that does not parse as JSON AT ALL is a failed call, not an honest "no sources
@@ -571,7 +585,8 @@ public class FilingExtractionService : IFilingExtractionService
     // Salvage a truncated reply (finish_reason=length): the sources array was cut mid-stream so the
     // outer structure never closed — `]}` recovers every complete source up to the last closing brace,
     // dropping only the half-written trailing object (instead of voiding the whole chunk → "0 matches").
-    private static IEnumerable<ExtractionSuggestion> Parse(string answer, string section)
+    private static IEnumerable<ExtractionSuggestion> Parse(
+        string answer, string section, ExtractionNode node)
     {
         using var doc = LlmJson.ParseObject(answer, "]}");
         if (doc is null ||
@@ -585,8 +600,8 @@ public class FilingExtractionService : IFilingExtractionService
             yield return new ExtractionSuggestion(
                 Name: name!,
                 Classification: Str(el, "classification"),
-                Value: LlmJson.Num(el, "value"),
-                Percentage: LlmJson.Num(el, "percentage"),
+                Value: node == ExtractionNode.COST ? null : LlmJson.Num(el, "value"),
+                Percentage: node == ExtractionNode.COST ? null : LlmJson.Num(el, "percentage"),
                 RelatedCompany: Str(el, "related_company"),
                 Section: section,
                 Evidence: Str(el, "evidence"),

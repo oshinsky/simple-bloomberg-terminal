@@ -5,7 +5,7 @@
     <h2><span class="page-header-accent">//</span> Extraction measurement — COST</h2>
     <div class="page-subtitle">
         Runs the full pipeline N times over the same filing — fast workers AND lead agent, graded
-        separately · repeatability + evidence groundedness scored automatically · precision is the
+        separately · repeatability + evidence presence scored automatically · precision is the
         manual pass over the blank <code>judgement</code> column
     </div>
 </div>
@@ -27,6 +27,22 @@
         <div>
             <label class="form-label" for="Runs">Runs per filing</label>
             <input class="form-control" id="Runs" type="number" min="2" max="20" value="@Model.Runs" style="max-width:8rem">
+        </div>
+        <div>
+            <label class="form-label" for="StrictCounterparties">Extraction mode</label>
+            <select class="form-select" id="StrictCounterparties" style="max-width:22rem">
+                @if (Model.StrictCounterparties)
+                {
+                    <option value="false">Less strict extraction (current prompt)</option>
+                    <option value="true" selected>Strict extraction</option>
+                }
+                else
+                {
+                    <option value="false" selected>Less strict extraction (current prompt)</option>
+                    <option value="true">Strict extraction</option>
+                }
+            </select>
+            <div class="form-text">Strict mode requires an explicit transaction or concrete commercial collaboration.</div>
         </div>
     </div>
     <div class="form-actions">
@@ -60,7 +76,8 @@
     btn.addEventListener('click', async () => {
         const payload = {
             targets: document.getElementById('Targets').value,
-            runs: Number(document.getElementById('Runs').value) || 2
+            runs: Number(document.getElementById('Runs').value) || 2,
+            strictCounterparties: document.getElementById('StrictCounterparties').value === 'true'
         };
         btn.disabled = true;
         btn.textContent = 'Running…';
@@ -131,7 +148,9 @@
                       <div style="display:flex;gap:.5rem;">
                         <span style="width:5rem;flex:none;" class="${c.status === 'Error' ? 'impact-badge impact-high' : 'muted-cell'}">${esc(c.status)}</span>
                         <span style="width:3rem;flex:none;text-align:right;">${c.status === 'Done' ? c.found : ''}</span>
-                        <span class="muted-cell">${esc((c.titles || []).join(' · ') || '(section body)')}</span>
+                        <span class="muted-cell">${esc((c.titles || []).join(' · ') || '(section body)')}
+                          ${c.error ? `<span class="impact-badge impact-high" style="margin-left:.4rem;white-space:normal;">${esc(c.error)}</span>` : ''}
+                        </span>
                       </div>`).join('')}
                   </div>
                 </details>
@@ -150,6 +169,7 @@
                 <span>@r.Company</span>
                 <span class="muted-cell" style="font-weight:normal;">
                     @r.Accession · @r.Runs runs · @r.Model · @r.RunAt.ToString("yyyy-MM-dd HH:mm")Z
+                    · @(Model.StrictCounterparties ? "strict extraction" : "less strict extraction")
                 </span>
             </div>
 
@@ -160,15 +180,17 @@
             else
             {
                 <div style="overflow-x:auto">
-                    <table class="terminal-table">
+                    <table class="terminal-table" style="table-layout:fixed;min-width:58rem;">
+                        <colgroup>
+                            <col style="width:8%"><col style="width:12%"><col style="width:16%">
+                            <col style="width:16%"><col style="width:16%"><col style="width:16%">
+                            <col style="width:16%">
+                        </colgroup>
                         <thead>
                         <tr>
-                            <th rowspan="2">Run</th><th rowspan="2">Chunks</th>
-                            <th colspan="2">Fast workers</th>
-                            <th colspan="2">Lead agent</th>
-                            <th rowspan="2">Errors</th>
+                            <th>Run</th><th>Chunks</th><th>Fast items</th><th>Fast evidence %</th>
+                            <th>Lead items</th><th>Lead evidence %</th><th>Errors</th>
                         </tr>
-                        <tr><th>Items</th><th>Ground %</th><th>Items</th><th>Ground %</th></tr>
                         </thead>
                         <tbody>
                         @foreach (var d in r.RunDetail)
@@ -177,9 +199,9 @@
                                 <td class="code-cell">@d.Run</td>
                                 <td class="num-cell">@d.Chunks</td>
                                 <td class="num-cell">@d.WorkerItems</td>
-                                <td class="num-cell">@d.WorkerGroundPct</td>
+                                <td class="num-cell">@d.WorkerEvidencePct</td>
                                 <td class="num-cell">@d.LeadItems</td>
-                                <td class="num-cell">@d.LeadGroundPct</td>
+                                <td class="num-cell">@d.LeadEvidencePct</td>
                                 <td class="num-cell">
                                     @if (d.Errors > 0)
                                     {
@@ -191,14 +213,25 @@
                                     }
                                 </td>
                             </tr>
+                            @if (d.ErrorDetails is { Count: > 0 })
+                            {
+                                <tr>
+                                    <td colspan="7">
+                                        @foreach (var error in d.ErrorDetails)
+                                        {
+                                            <div class="impact-badge impact-high" style="white-space:pre-wrap;margin:.15rem 0;">@error</div>
+                                        }
+                                    </td>
+                                </tr>
+                            }
                         }
                         <tr class="row-live">
                             <td class="code-cell"><strong>mean</strong></td>
                             <td class="num-cell">@r.MeanChunks</td>
                             <td class="num-cell">@r.MeanWorkerItems</td>
-                            <td class="num-cell">@r.WorkerGroundPct</td>
+                            <td class="num-cell">@r.WorkerEvidencePct</td>
                             <td class="num-cell">@r.MeanLeadItems</td>
-                            <td class="num-cell">@r.LeadGroundPct</td>
+                            <td class="num-cell">@r.LeadEvidencePct</td>
                             <td class="num-cell">@r.TotalErrors</td>
                         </tr>
                         </tbody>
@@ -207,20 +240,22 @@
 
                 @* Repeatability and retention exist only ACROSS runs, so they have no per-run cell —
                    they belong beneath the table rather than in it. *@
-                <div class="detail-metric-row" style="display:flex;gap:2rem;flex-wrap:wrap;margin-top:.75rem;">
+                <div class="detail-metric-row" style="display:grid;grid-template-columns:repeat(3,minmax(12rem,1fr));gap:1rem;margin-top:.75rem;">
                     <div>
                         <div class="ext-field-label">Repeatability</div>
                         <div class="num-cell">fast @r.WorkerRepeatPct% · lead @r.LeadRepeatPct%</div>
                     </div>
                     <div>
-                        <div class="ext-field-label">Groundedness</div>
-                        <div class="num-cell">fast @r.WorkerGroundPct% · lead @r.LeadGroundPct%</div>
+                        <div class="ext-field-label">Evidence found</div>
+                        <div class="num-cell">fast @r.WorkerEvidencePct% · lead @r.LeadEvidencePct%</div>
                     </div>
                     <div>
                         <div class="ext-field-label">Retention</div>
                         <div class="num-cell">@r.RetentionPct%</div>
                     </div>
                 </div>
+
+                <div class="presence-matrix" data-accession="@r.Accession" style="margin-top:1rem;"></div>
 
                 @if (r.TotalErrors > 0)
                 {
@@ -257,8 +292,8 @@
             <table class="terminal-table" id="reviewTable">
                 <thead>
                 <tr>
-                    <th>Counterparty</th><th>Direction</th><th>What</th><th>Value</th>
-                    <th>Section</th><th>Grounded</th><th>Evidence</th><th>Judgement</th>
+                    <th>Counterparty</th><th>Direction</th><th>What</th>
+                    <th>Section</th><th>Evidence found</th><th>Evidence</th><th>Judgement</th>
                 </tr>
                 </thead>
                 <tbody></tbody>
@@ -278,11 +313,11 @@
     (function () {
         const ROWS = @Html.Raw(Model.RowsJson ?? "[]");
 
-        // Your three precision buckets, plus one for a row that is grounded and correctly valued but
-        // is not a commercial counterparty at all (a competitor, a plaintiff) — that failure is
-        // invisible to the groundedness check, so it needs its own bucket rather than being forced
+        // Three precision buckets, including one for a real quote that names a company which is not
+        // a commercial counterparty at all (a competitor, a plaintiff) — that failure is
+        // invisible to the evidence-presence check, so it needs its own bucket rather than being forced
         // into "wrongly classified".
-        const JUDGEMENTS = ['', 'ISPRAVNA', 'POGRESNO_KLASIFICIRANA', 'POGRESNA_VRIJEDNOST', 'NIJE_COUNTERPARTY'];
+        const JUDGEMENTS = ['', 'ISPRAVNA', 'POGRESNO_KLASIFICIRANA', 'NIJE_COUNTERPARTY'];
 
         const runPick = document.getElementById('runPick');
         const layerPick = document.getElementById('layerPick');
@@ -292,8 +327,78 @@
         const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
             ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+        // Repeatability is easiest to inspect as a presence matrix over the UNION of all companies
+        // found in all runs. Do not use run 1 as the baseline: a company first found in run 2 would
+        // otherwise disappear from the comparison entirely. This mirrors the server-side identity
+        // key (direction + normalised counterparty), including its legal-suffix normalisation.
+        const COMPANY_SUFFIXES = new Set([
+            'inc', 'corp', 'corporation', 'co', 'ltd', 'limited', 'llc', 'plc', 'gmbh', 'ag',
+            'sa', 'nv', 'ab', 'as', 'oy', 'kk'
+        ]);
+        const companyKey = name => String(name || '')
+            .toLocaleLowerCase()
+            .replace(/[^\p{L}\p{N}]+/gu, ' ')
+            .trim()
+            .split(/\s+/)
+            .filter(w => w && !COMPANY_SUFFIXES.has(w))
+            .join(' ');
+
+        function renderPresenceMatrices() {
+            document.querySelectorAll('.presence-matrix').forEach(host => {
+                const filingRows = ROWS.filter(r => r.accession === host.dataset.accession);
+                const filingRuns = [...new Set(filingRows.map(r => r.run))].sort((a, b) => a - b);
+
+                const layerTable = (layer, title) => {
+                    const groups = new Map();
+                    filingRows.filter(r => r.layer === layer).forEach(r => {
+                        const key = `${String(r.direction || '').toUpperCase()}|${companyKey(r.counterparty)}`;
+                        if (!groups.has(key)) groups.set(key, { direction: r.direction || '—', names: new Set(), runs: new Set() });
+                        const g = groups.get(key);
+                        g.names.add(r.counterparty);
+                        g.runs.add(r.run); // duplicates inside one run count only once
+                    });
+
+                    const ordered = [...groups.values()].sort((a, b) => {
+                        const byCount = b.runs.size - a.runs.size;
+                        return byCount || [...a.names][0].localeCompare([...b.names][0]);
+                    });
+                    const body = ordered.length ? ordered.map(g => {
+                        const names = [...g.names].sort((a, b) => a.length - b.length || a.localeCompare(b));
+                        const pct = filingRuns.length ? 100 * g.runs.size / filingRuns.length : 0;
+                        return `<tr>
+                            <td class="name-cell">${esc(names[0])}${names.length > 1
+                                ? `<div class="muted-cell" title="Raw name variants">${esc(names.slice(1).join(' · '))}</div>` : ''}</td>
+                            <td class="tag-cell">${esc(g.direction)}</td>
+                            ${filingRuns.map(run => `<td class="num-cell">${g.runs.has(run) ? 'YES' : '—'}</td>`).join('')}
+                            <td class="num-cell"><strong>${g.runs.size}/${filingRuns.length}</strong></td>
+                            <td class="num-cell">${pct.toFixed(1)}%</td>
+                        </tr>`;
+                    }).join('') : `<tr><td colspan="${filingRuns.length + 4}" class="muted-cell">No counterparties found.</td></tr>`;
+
+                    return `<div style="margin-top:.9rem;overflow-x:auto;">
+                        <div class="ext-field-label" style="margin-bottom:.35rem;">${esc(title)}</div>
+                        <table class="terminal-table" style="min-width:46rem;">
+                            <thead><tr><th>Counterparty</th><th>Direction</th>
+                                ${filingRuns.map(run => `<th>Run ${run}</th>`).join('')}
+                                <th>Appeared</th><th>Repeatability</th>
+                            </tr></thead>
+                            <tbody>${body}</tbody>
+                        </table>
+                    </div>`;
+                };
+
+                host.innerHTML = `<div class="ext-field-label">Counterparty presence across all runs</div>
+                    <div class="form-text">Union of all canonicalised counterparties; YES means the company-direction pair appeared at least once in that run.</div>
+                    ${layerTable('WORKER', 'Fast workers')}
+                    ${layerTable('LEAD', 'Lead agent')}`;
+            });
+        }
+
         // Judgements live on the row objects, so switching runs and re-rendering never loses them.
-        ROWS.forEach(r => r.judgement = '');
+        ROWS.forEach(r => {
+            r.judgement = '';
+            r.extractionMode = '@(Model.StrictCounterparties ? "STRICT" : "LESS_STRICT")';
+        });
 
         const runs = [...new Set(ROWS.map(r => r.run))].sort((a, b) => a - b);
         runs.forEach(n => runPick.add(new Option('Run ' + n, n)));
@@ -337,10 +442,9 @@
                     `<td class="name-cell">${esc(r.counterparty)}</td>` +
                     `<td class="tag-cell">${esc(r.direction || '—')}</td>` +
                     `<td class="muted-cell">${esc(r.what || '—')}</td>` +
-                    `<td class="num-cell">${r.value == null ? '—' : '$' + (r.value / 1e9).toFixed(2) + 'B'}</td>` +
                     `<td class="tag-cell">${esc(r.section || '—')}</td>` +
-                    `<td class="num-cell"><span class="impact-badge ${r.grounded ? 'impact-low' : 'impact-high'}">` +
-                        `${r.grounded ? 'YES' : 'NO'} ${r.matchScore}</span></td>` +
+                    `<td class="num-cell"><span class="impact-badge ${r.evidenceFound ? 'impact-low' : 'impact-high'}">` +
+                        `${r.evidenceFound ? 'YES' : 'NO'}</span></td>` +
                     `<td class="muted-cell" style="max-width:26rem;">` +
                         `<div class="evidence-link" role="button" tabindex="0">evidence ▾</div>` +
                         `<div class="ev-full" hidden style="margin-top:.35rem;white-space:pre-wrap;">` +
@@ -383,10 +487,10 @@
 
         // The single CSV writer. It lives here rather than server-side because `judgement` is filled
         // in this table — generating it in C# would mean a second writer producing a stale column.
-        const COLS = ['layer', 'company', 'cik', 'accession', 'doc', 'run', 'counterparty', 'direction',
-            'what', 'value', 'evidence', 'section', 'grounded', 'matchScore', 'runsPresent',
-            'valueStable', 'whatVariants', 'sectionCandidates', 'runChunks', 'runWorkerItems',
-            'runLeadItems', 'runErrors', 'workerGroundPct', 'workerRepeatPct', 'leadGroundPct',
+        const COLS = ['extractionMode', 'layer', 'company', 'cik', 'accession', 'doc', 'run', 'counterparty', 'direction',
+            'what', 'evidence', 'section', 'evidenceFound', 'runsPresent',
+            'whatVariants', 'sectionCandidates', 'runChunks', 'runWorkerItems',
+            'runLeadItems', 'runErrors', 'workerEvidencePct', 'workerRepeatPct', 'leadEvidencePct',
             'leadRepeatPct', 'retentionPct', 'totalErrors', 'judgement', 'model', 'runAt'];
         // Quote text, leave numbers/booleans bare so Excel reads them as numbers and COUNTIF works.
         const cell = v => v == null ? ''
@@ -398,6 +502,7 @@
 
         runPick.addEventListener('change', render);
         layerPick.addEventListener('change', render);
+        renderPresenceMatrices();
         render();
 
         document.getElementById('csvDownload').addEventListener('click', () => {

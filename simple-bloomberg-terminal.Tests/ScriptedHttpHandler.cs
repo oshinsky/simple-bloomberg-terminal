@@ -5,7 +5,7 @@ namespace simple_bloomberg_terminal.Tests;
 
 /// <summary>
 /// A test <see cref="HttpMessageHandler"/> that answers from a supplied responder instead of the
-/// network, so the real typed clients (<c>DeepSeekClient</c>, <c>CounterpartyDiscoveryService</c>)
+/// network, so the real transports (<c>OpenAiCompatibleChatProvider</c>, <c>CounterpartyDiscoveryService</c>)
 /// run their actual request-shaping and response-parsing against canned LLM payloads. Captures every
 /// request (body + Authorization header) for assertions; the capture list is locked because the
 /// discovery service fires its sub-query searches in parallel.

@@ -7,19 +7,15 @@ using Microsoft.Extensions.Logging;
 namespace simple_bloomberg_terminal.Services.Llm;
 
 /// <summary>
-/// One transport for every provider that speaks the OpenAI <c>/chat/completions</c> wire shape but
-/// isn't DeepSeek — currently Kimi (Moonshot) and OpenAI. Same Bearer-per-request auth and
-/// choices→content envelope as <see cref="DeepSeekClient"/>; the per-provider differences (base URL +
-/// key are wired in DI, and the cap parameter is <c>max_tokens</c> vs OpenAI's <c>max_completion_tokens</c>)
-/// are passed to the constructor. The body is built as a dictionary so each provider emits exactly the
-/// keys its API accepts.
+/// One configurable transport for providers that speak the OpenAI <c>/chat/completions</c> wire shape:
+/// DeepSeek, Kimi (Moonshot), and OpenAI. Their base URL, provider id, and token-cap field
+/// (<c>max_tokens</c> or <c>max_completion_tokens</c>) are supplied through DI. The body is built as
+/// a dictionary so each provider emits exactly the keys its API accepts.
 /// </summary>
 public sealed class OpenAiCompatibleChatProvider : IChatProvider
 {
     private readonly HttpClient _http;
     private readonly IUserApiKeyProvider _keys;
-    private readonly Func<UserApiKeys, string?> _pickKey;
-    private readonly Func<MissingApiKeyException> _ifMissing;
     private readonly string _maxTokensField;
     private readonly ILogger<OpenAiCompatibleChatProvider> _logger;
 
@@ -27,40 +23,32 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
 
     public OpenAiCompatibleChatProvider(
         HttpClient http, IUserApiKeyProvider keys, ChatProviderId id,
-        Func<UserApiKeys, string?> pickKey, Func<MissingApiKeyException> ifMissing,
         string maxTokensField, ILogger<OpenAiCompatibleChatProvider> logger)
     {
         _http = http;
         _keys = keys;
         Id = id;
-        _pickKey = pickKey;
-        _ifMissing = ifMissing;
         _maxTokensField = maxTokensField;
         _logger = logger;
     }
 
-    private Task<string> KeyAsync(CancellationToken ct) => _keys.RequireAsync(_pickKey, _ifMissing, ct);
+    private Task<string> KeyAsync(CancellationToken ct) =>
+        _keys.RequireAsync(k => k.KeyFor(Id), () => MissingApiKeyException.ForParsingProvider(Id), ct);
 
-    public async Task<string> CompleteAsync(
-        string model, string system, string userPrompt,
-        int maxTokens, bool jsonObject, CancellationToken ct)
-        => (await CompleteDetailedAsync(model, system, userPrompt, maxTokens, jsonObject, ct)).Content;
-
-    public async Task<LlmCompletion> CompleteDetailedAsync(
-        string model, string system, string userPrompt,
-        int maxTokens, bool jsonObject, CancellationToken ct)
+    public async Task<LlmCompletion> CompleteAsync(
+        string model, ChatRequest request, CancellationToken ct)
     {
         var body = new Dictionary<string, object?>
         {
             ["model"] = model,
             ["messages"] = new[]
             {
-                new { role = "system", content = system },
-                new { role = "user", content = userPrompt }
+                new { role = "system", content = request.System },
+                new { role = "user", content = request.Prompt }
             },
-            [_maxTokensField] = maxTokens
+            [_maxTokensField] = request.MaxTokens
         };
-        if (jsonObject) body["response_format"] = new { type = "json_object" };
+        if (request.JsonObject) body["response_format"] = new { type = "json_object" };
 
         using var httpReq = new HttpRequestMessage(HttpMethod.Post, "/chat/completions")
         {
@@ -71,14 +59,14 @@ public sealed class OpenAiCompatibleChatProvider : IChatProvider
         if (!resp.IsSuccessStatusCode)
             _logger.LogWarning("{Provider} complete {Model} failed: {Status}", Id, model, (int)resp.StatusCode);
         resp.EnsureSuccessStatusCode();
-        var parsed = await resp.Content.ReadFromJsonAsync<DeepSeekResponse>(ct);
+        var parsed = await resp.Content.ReadFromJsonAsync<OpenAiChatCompletionResponse>(ct);
 
         var choice = parsed?.Choices?.FirstOrDefault();
         return new LlmCompletion(choice?.Message?.Content ?? "", choice?.FinishReason);
     }
 
     public async IAsyncEnumerable<ChatDelta> StreamAsync(
-        string model, IReadOnlyList<DeepSeekMessage> messages,
+        string model, IReadOnlyList<LlmMessage> messages,
         int? maxTokens, [EnumeratorCancellation] CancellationToken ct = default)
     {
         var body = new Dictionary<string, object?>

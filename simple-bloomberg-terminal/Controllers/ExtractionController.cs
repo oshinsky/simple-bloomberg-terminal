@@ -297,7 +297,7 @@ public class ExtractionController : Controller
 
     // ── Measurement harness ────────────────────────────────────────────────────────────────────
     // Runs the COST lead agent N times over the same filing(s) and scores repeatability +
-    // groundedness. Server-side and in-process on purpose: driving the normal chat path would mean
+    // evidence presence. Server-side and in-process on purpose: driving the normal chat path would mean
     // N browser sessions parsing ```ledger``` blocks in JS and pasting results out by hand.
     // Read-only — nothing here writes to the database.
 
@@ -336,7 +336,7 @@ public class ExtractionController : Controller
         if (targets.Count == 0) return BadRequest("No valid target lines.");
 
         var runs = Math.Clamp(vm.Runs, 2, 20);
-        var job = new MeasureJob { Runs = runs };
+        var job = new MeasureJob { Runs = runs, StrictCounterparties = vm.StrictCounterparties };
         _measureJobs.Add(job);
 
         _ = Task.Run(async () =>
@@ -357,7 +357,7 @@ public class ExtractionController : Controller
                     try
                     {
                         var result = await measure.MeasureAsync(
-                            t.CompanyId, t.Accession, t.Doc, runs, t.Form,
+                            t.CompanyId, t.Accession, t.Doc, runs, t.Form, job.StrictCounterparties,
                             p => job.Apply(p with { Filing = label }));
                         lock (job.Lock) job.Results.Add(result);
                     }
@@ -404,7 +404,11 @@ public class ExtractionController : Controller
                         r.Filing, r.Run, r.Phase, r.WorkerItems, r.Errors, r.LeadItems,
                         chunksTotal = r.Chunks.Count,
                         chunksDone = r.Chunks.Count(c => c.Status is "Done" or "Error"),
-                        chunks = r.Chunks.Select(c => new { c.Titles, c.Status, c.Found }),
+                        chunks = r.Chunks.Select(c => new
+                        {
+                            c.Titles, c.Status, c.Found,
+                            error = c.Status == "Error" ? c.Response : null,
+                        }),
                     }),
             });
     }
@@ -420,6 +424,7 @@ public class ExtractionController : Controller
             return View("Measure", new MeasureViewModel
             {
                 Runs = job.Runs,
+                StrictCounterparties = job.StrictCounterparties,
                 Results = job.Results.ToList(),
                 RowsJson = job.RowsJson,
             });

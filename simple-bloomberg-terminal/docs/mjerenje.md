@@ -43,3 +43,4 @@ neutemeljeni.
 
 **5. Greške radnika broje se po prolazu.** Neuspio poziv radnika vraća prazan rezultat, nerazlučiv od
 isječka koji doista nije sadržavao ništa. Bez brojanja bi tiho smanjivao prinos i zadržavanje.
+

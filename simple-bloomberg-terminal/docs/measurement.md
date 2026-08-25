@@ -20,22 +20,21 @@ several packed sub-headings of an SEC Item or one rendered financial statement.
 **Repeatability.** The same extraction of the same filing runs N times. Each claim is keyed by
 `(direction, normalised counterparty name)`; normalisation lowercases, strips punctuation and drops
 corporate suffixes, so "Ablecom Technology Inc." and "Ablecom Technology" are one company rather than
-two. A key is stable when it appears in *every* run. Value stability is tracked separately. Variation
+two. A key is stable when it appears in *every* run. Variation
 in the free-text `what` field is counted (`whatVariants`) but never scored as instability. Automatic.
 
-**Groundedness.** Each claim's `evidence` string is checked against the filing text the workers
-actually read. Whitespace and punctuation are normalised to lowercase alphanumeric tokens; a literal
-match passes outright, otherwise token overlap over a same-length window must reach **0.90**. Scored
-independently for each layer. Automatic.
+**Evidence presence.** Each claim's `evidence` string is checked against the filing text the workers
+actually read. Whitespace, punctuation and case are normalised, after which the complete evidence
+must occur in the filing. Scored independently for each layer. Automatic.
 
 **Precision.** One run of one layer is annotated by hand in the review grid, into
-`ISPRAVNA` / `POGRESNO_KLASIFICIRANA` / `POGRESNA_VRIJEDNOST` / `NIJE_COUNTERPARTY`. Precision is the
+`ISPRAVNA` / `POGRESNO_KLASIFICIRANA` / `NIJE_COUNTERPARTY`. Precision is the
 share of judged claims marked correct. The fourth bucket exists because a competitor or litigation
-adversary returned as a commercial counterparty is invisible to groundedness — the quote is real and
+adversary returned as a commercial counterparty is invisible to evidence presence — the quote is real and
 the company is named. Manual.
 
 **Retention** (supporting figure). Mean lead items ÷ mean worker items. Recall is the hole in the
-metric set — groundedness and precision both only see what *was* reported, never what was silently
+metric set — evidence presence and precision only see what *was* reported, never what was silently
 dropped — and this is the cheapest available proxy.
 
 ## Harness design
@@ -69,9 +68,9 @@ Concurrency ceiling: 10 runs × 6-wide workers = 60 simultaneous fast calls, aga
 
 **1. COST extraction became counterparty-based.** It previously asked for
 `classification ∈ {COGS, OPEX, TOTAL_COSTS}` — an accounting judgement the filing never states, so
-nothing in the text can back it and groundedness is undefined for that field. The unit is now a named
-counterparty: `counterparty`, `direction ∈ {SUPPLIER, CUSTOMER, PARTNER}`, `what`, `value`,
-`evidence`. Every field is a fact printed on the page, so every field is checkable. The accounting
+nothing in the text can back it and evidence presence is undefined for that field. The unit is now a named
+counterparty: `counterparty`, `direction ∈ {SUPPLIER, CUSTOMER, PARTNER}`, `what`, `evidence`.
+Every field is a fact printed on the page, so every field is checkable. The accounting
 bucket is now derived at save time (`SUPPLIER → COGS`), which is what the existing save paths already
 defaulted to.
 
@@ -85,9 +84,9 @@ measured variance to what the models do with identical input.
 a human reviewer, unmeasurable across runs. A fixed prompt now triggers a structured `ledger` block
 with the fixed column set. Conversational behaviour is unchanged.
 
-**4. Groundedness corpus corrected.** Item 8 does not come from the filing document — it comes from
+**4. Evidence corpus corrected.** Item 8 does not come from the filing document — it comes from
 SEC's separately fetched rendered report files. Checking evidence only against the document scored
-every financial-statement quote as ungrounded despite being verbatim.
+every financial-statement quote as absent despite being verbatim.
 
 ## Other changes
 

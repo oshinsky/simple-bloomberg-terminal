@@ -50,7 +50,7 @@ public class IndexDiscoveryService : IIndexDiscovery
         var model = (await _keys.GetAsync(ct)).WebSearchModel ?? ChatProviders.DefaultWebSearchModel;
         var req = new PerplexityRequest(
             Model: model,
-            Messages: [new DeepSeekMessage("system", system), new DeepSeekMessage("user", user)],
+            Messages: [new LlmMessage("system", system), new LlmMessage("user", user)],
             MaxTokens: 1500,
             WebSearchOptions: new PerplexityWebSearchOptions("medium"));
 

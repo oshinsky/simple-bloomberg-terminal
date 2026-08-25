@@ -33,7 +33,11 @@
       "PowerShell($f='C:\\\\Users\\\\luka.osojnik\\\\Documents\\\\Coding\\\\simple-bloomberg-terminal\\\\simple-bloomberg-terminal.Tests\\\\FilingTableTests.cs'; \\(Get-Content $f | Measure-Object -Line\\).Lines)",
       "PowerShell($out='C:\\\\Users\\\\LUKA~1.OSO\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-luka-osojnik-Documents-Coding-simple-bloomberg-terminal\\\\b07f70e2-966b-4048-902c-9894d9adaf8d\\\\scratchpad\\\\testbin'; dotnet test \"$out\\\\simple-bloomberg-terminal.Tests.dll\" --nologo --filter \"FullyQualifiedName~FilingTableTests|FullyQualifiedName~ExtractionTests\" 2>&1 | Select-String -Pattern \"Passed!|Failed!|  Failed |Assert\" | Select-Object -Last 25)",
       "PowerShell($out='C:\\\\Users\\\\LUKA~1.OSO\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-luka-osojnik-Documents-Coding-simple-bloomberg-terminal\\\\b07f70e2-966b-4048-902c-9894d9adaf8d\\\\scratchpad\\\\testbin'; dotnet test \"$out\\\\simple-bloomberg-terminal.Tests.dll\" --nologo --filter \"FullyQualifiedName~Build_GivesTheLastItem\" 2>&1 | Select-Object -Last 20)",
-      "Bash(grep -n '```' -A 12 -B 6 simple-bloomberg-terminal/wwwroot/js/site.js)"
+      "Bash(grep -n '```' -A 12 -B 6 simple-bloomberg-terminal/wwwroot/js/site.js)",
+      "Bash(git config *)",
+      "Bash(gh auth *)",
+      "Read(//Users/lukaosojnik/.config/**)",
+      "Read(//Users/lukaosojnik/.ssh/**)"
     ]
   },
   "outputStyle": "Learning"

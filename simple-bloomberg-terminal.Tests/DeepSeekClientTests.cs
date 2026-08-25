@@ -1,19 +1,23 @@
 using System.Net;
 using System.Text.Json;
-using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace simple_bloomberg_terminal.Tests;
 
 /// <summary>
-/// Integration tests for the DeepSeek call layer: the real <see cref="DeepSeekClient"/> against a
+/// Integration tests for the shared OpenAI-compatible transport configured for DeepSeek against a
 /// scripted HTTP handler. Covers what's fragile — the snake_case request shaping, the json_object
 /// toggle, the choices→content envelope, and the streaming split of reasoning vs answer SSE frames.
 /// </summary>
-public class DeepSeekClientTests
+public class DeepSeekProviderTests
 {
-    private static DeepSeekClient Build(ScriptedHttpHandler handler, UserApiKeys? keys = null) =>
+    private static OpenAiCompatibleChatProvider Build(
+        ScriptedHttpHandler handler, UserApiKeys? keys = null) =>
         new(new HttpClient(handler) { BaseAddress = new Uri("https://api.deepseek.com") },
-            new FakeApiKeyProvider(keys ?? new UserApiKeys("ds-key", null, null)));
+            new FakeApiKeyProvider(keys ?? new UserApiKeys("ds-key", null, null)),
+            ChatProviderId.DeepSeek,
+            "max_tokens",
+            NullLogger<OpenAiCompatibleChatProvider>.Instance);
 
     [Fact]
     public async Task CompleteAsync_JsonObject_SendsSnakeCaseRequest_AndReturnsContent()
@@ -23,9 +27,10 @@ public class DeepSeekClientTests
         var client = Build(handler);
 
         var answer = await client.CompleteAsync(
-            "deepseek-v4-flash", "SYS", "USER", maxTokens: 1500, jsonObject: true);
+            "deepseek-v4-flash", new ChatRequest("SYS", "USER", 1500, JsonObject: true),
+            CancellationToken.None);
 
-        Assert.Equal("{\"sources\":[]}", answer);
+        Assert.Equal("{\"sources\":[]}", answer.Content);
 
         var req = handler.Single();
         Assert.Equal("Bearer ds-key", req.Authorization);
@@ -50,24 +55,25 @@ public class DeepSeekClientTests
         var handler = ScriptedHttpHandler.Json("""{"choices":[{"message":{"content":"plain"}}]}""");
         var client = Build(handler);
 
-        var answer = await client.CompleteAsync("deepseek-v4-flash", "s", "u");
+        var answer = await client.CompleteAsync(
+            "deepseek-v4-flash", new ChatRequest("s", "u"), CancellationToken.None);
 
-        Assert.Equal("plain", answer);
-        // response_format has no JsonIgnore, so without jsonObject it serializes present-but-null
-        // (never "json_object") — that null is what tells DeepSeek to return free-form text.
+        Assert.Equal("plain", answer.Content);
+        // response_format is optional; omitting it asks DeepSeek for its default free-form text.
         using var doc = JsonDocument.Parse(handler.Single().Body);
-        Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("response_format").ValueKind);
+        Assert.False(doc.RootElement.TryGetProperty("response_format", out _));
     }
 
     [Fact]
-    public async Task CompleteDetailedAsync_ReturnsFinishReason()
+    public async Task CompleteAsync_ReturnsFinishReason()
     {
         var handler = ScriptedHttpHandler.Json(
             """{"choices":[{"message":{"role":"assistant","content":"{\"sources\":["},"finish_reason":"length"}]}""");
         var client = Build(handler);
 
-        var result = await client.CompleteDetailedAsync(
-            "deepseek-v4-flash", "s", "u", maxTokens: 16_000, jsonObject: true);
+        var result = await client.CompleteAsync(
+            "deepseek-v4-flash", new ChatRequest("s", "u", 16_000, JsonObject: true),
+            CancellationToken.None);
 
         Assert.Equal("{\"sources\":[", result.Content);
         Assert.Equal("length", result.FinishReason);
@@ -79,7 +85,8 @@ public class DeepSeekClientTests
         var handler = ScriptedHttpHandler.Json("""{"choices":[]}""");
         var client = Build(handler);
 
-        Assert.Equal("", await client.CompleteAsync("m", "s", "u"));
+        var result = await client.CompleteAsync("m", new ChatRequest("s", "u"), CancellationToken.None);
+        Assert.Equal("", result.Content);
     }
 
     [Fact]
@@ -88,7 +95,8 @@ public class DeepSeekClientTests
         var handler = ScriptedHttpHandler.Json("{}");
         var client = Build(handler, UserApiKeys.Empty);
 
-        await Assert.ThrowsAsync<MissingApiKeyException>(() => client.CompleteAsync("m", "s", "u"));
+        await Assert.ThrowsAsync<MissingApiKeyException>(() =>
+            client.CompleteAsync("m", new ChatRequest("s", "u"), CancellationToken.None));
         Assert.Empty(handler.Captured);   // the key is required before the request is built
     }
 
@@ -99,7 +107,8 @@ public class DeepSeekClientTests
             new HttpResponseMessage(HttpStatusCode.InternalServerError));
         var client = Build(handler);
 
-        await Assert.ThrowsAsync<HttpRequestException>(() => client.CompleteAsync("m", "s", "u"));
+        await Assert.ThrowsAsync<HttpRequestException>(() =>
+            client.CompleteAsync("m", new ChatRequest("s", "u"), CancellationToken.None));
     }
 
     [Fact]
@@ -118,7 +127,7 @@ public class DeepSeekClientTests
 
         var deltas = new List<ChatDelta>();
         await foreach (var d in client.StreamAsync(
-            "deepseek-v4-pro", [new DeepSeekMessage("user", "hi")]))
+            "deepseek-v4-pro", [new LlmMessage("user", "hi")], null, CancellationToken.None))
             deltas.Add(d);
 
         Assert.Collection(deltas,
@@ -143,7 +152,8 @@ public class DeepSeekClientTests
         var client = Build(ScriptedHttpHandler.Sse(sse));
 
         var text = "";
-        await foreach (var d in client.StreamAsync("m", [new DeepSeekMessage("user", "hi")]))
+        await foreach (var d in client.StreamAsync(
+            "m", [new LlmMessage("user", "hi")], null, CancellationToken.None))
             if (d.Kind == "text") text += d.Text;
 
         Assert.Equal("AB", text);

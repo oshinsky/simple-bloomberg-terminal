@@ -282,6 +282,7 @@ public class MeasureViewModel
 {
     public string? Targets { get; set; }
     public int Runs { get; set; } = 10;
+    public bool StrictCounterparties { get; set; }
     public IReadOnlyList<Services.Extraction.FilingMeasurement> Results { get; set; } = [];
     public string? RowsJson { get; set; }
 }

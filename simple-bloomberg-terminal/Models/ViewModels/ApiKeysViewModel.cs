@@ -15,9 +15,8 @@ public class ApiKeysViewModel
     public ApiKeyStatus OpenAi { get; set; } = new();
     public ApiKeyStatus Anthropic { get; set; } = new();
 
-    // Current routing selections (which provider/model runs each role).
+    // Current routing selections. Parsing model tiers are selected automatically by call type.
     public ChatProviderId ParsingProvider { get; set; } = ChatProviderId.DeepSeek;
-    public string ParsingModel { get; set; } = "";
     public string WebSearchModel { get; set; } = ChatProviders.DefaultWebSearchModel;
 }
 

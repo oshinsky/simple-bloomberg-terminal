@@ -93,7 +93,11 @@ public class IndustryClassifier : IIndustryClassifier
         // logs), so the budget has to clear the reasoning trace with room to spare, not just fit the JSON. Industry
         // is best-effort, so a missing key / unreachable model just returns null rather than blocking the flow.
         string raw;
-        try { raw = await _llm.CompleteAsync(system, user, maxTokens: 4000, jsonObject: true, fast: false, ct: ct); }
+        try
+        {
+            raw = (await _llm.CompleteAsync(
+                new ChatRequest(system, user, MaxTokens: 4000, JsonObject: true), ct)).Content;
+        }
         catch (Exception ex) when (ex is HttpRequestException or MissingApiKeyException) { return null; }
 
         // Parse + validate; on any failure, log WHY (truncation vs out-of-list vs wrong-sector vs the model

@@ -49,7 +49,6 @@ public class UserApiKeyProvider : IUserApiKeyProvider
             Decrypt(row.OpenAiKey),
             Decrypt(row.AnthropicKey),
             ChatProviders.ParseProvider(row.ParsingProvider),
-            row.ParsingModel,
             row.WebSearchModel);
     }
 
@@ -69,7 +68,6 @@ public class UserApiKeyProvider : IUserApiKeyProvider
 
         // Routing choices are plaintext and always overwritten with the posted selection.
         row.ParsingProvider = edit.ParsingProvider.ToString();
-        row.ParsingModel = ChatProviders.ResolveModel(edit.ParsingProvider, edit.ParsingModel);
         row.WebSearchModel = ChatProviders.WebSearchModels.Contains(edit.WebSearchModel)
             ? edit.WebSearchModel : ChatProviders.DefaultWebSearchModel;
 

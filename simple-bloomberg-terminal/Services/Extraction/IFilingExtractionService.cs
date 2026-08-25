@@ -29,5 +29,6 @@ public interface IFilingExtractionService
     /// its sections on a different scheme entirely (see <see cref="FilingSections.ItemsFor"/>).</summary>
     Task<AutoScanResult> ScanAutoAsync(
         long companyId, string accession, string doc, ExtractionNode node, string? filingType = null,
-        Action<ScanProgress>? onProgress = null, CancellationToken ct = default);
+        Action<ScanProgress>? onProgress = null, bool strictCounterparties = false,
+        CancellationToken ct = default);
 }

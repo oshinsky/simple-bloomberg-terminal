@@ -34,23 +34,17 @@ public sealed class AnthropicChatProvider : IChatProvider
     private Task<string> KeyAsync(CancellationToken ct) =>
         _keys.RequireAsync(k => k.Anthropic, MissingApiKeyException.Anthropic, ct);
 
-    public async Task<string> CompleteAsync(
-        string model, string system, string userPrompt,
-        int maxTokens, bool jsonObject, CancellationToken ct)
-        => (await CompleteDetailedAsync(model, system, userPrompt, maxTokens, jsonObject, ct)).Content;
-
-    public async Task<LlmCompletion> CompleteDetailedAsync(
-        string model, string system, string userPrompt,
-        int maxTokens, bool jsonObject, CancellationToken ct)
+    public async Task<LlmCompletion> CompleteAsync(
+        string model, ChatRequest request, CancellationToken ct)
     {
-        // jsonObject is intentionally unused: Anthropic has no response_format toggle, so JSON-only
+        // JsonObject is intentionally unused: Anthropic has no response_format toggle, so JSON-only
         // replies are driven by the system prompt (which every caller already phrases that way).
         var body = new
         {
             model,
-            max_tokens = maxTokens,
-            system,
-            messages = new[] { new { role = "user", content = userPrompt } }
+            max_tokens = request.MaxTokens,
+            system = request.System,
+            messages = new[] { new { role = "user", content = request.Prompt } }
         };
         using var doc = await SendAsync(body, ct);
         var root = doc.RootElement;
@@ -69,7 +63,7 @@ public sealed class AnthropicChatProvider : IChatProvider
     }
 
     public async IAsyncEnumerable<ChatDelta> StreamAsync(
-        string model, IReadOnlyList<DeepSeekMessage> messages,
+        string model, IReadOnlyList<LlmMessage> messages,
         int? maxTokens, [EnumeratorCancellation] CancellationToken ct = default)
     {
         // Messages API forbids a "system" role in the array — fold any system turns into the top-level

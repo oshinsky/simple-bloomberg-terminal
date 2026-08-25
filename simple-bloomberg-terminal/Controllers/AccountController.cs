@@ -131,20 +131,19 @@ public class AccountController : Controller
             OpenAi = Status(keys.OpenAi),
             Anthropic = Status(keys.Anthropic),
             ParsingProvider = keys.ParsingProvider,
-            ParsingModel = ChatProviders.ResolveModel(keys.ParsingProvider, keys.ParsingModel),
             WebSearchModel = keys.WebSearchModel ?? ChatProviders.DefaultWebSearchModel
         });
     }
 
     // Per key: a "clear" tick removes it; a non-blank input sets it; blank leaves it as-is (so the user
-    // can update one key without re-typing the others). The provider/model selections are always saved
+    // can update one key without re-typing the others). The routing selections are always saved
     // as posted. Encryption + persistence live in the provider.
     [HttpPost]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> SaveApiKeys(
         string? deepSeekKey, string? fmpKey, string? perplexityKey,
         string? kimiKey, string? openAiKey, string? anthropicKey,
-        ChatProviderId parsingProvider, string? parsingModel, string? webSearchModel,
+        ChatProviderId parsingProvider, string? webSearchModel,
         bool clearDeepSeek = false, bool clearFmp = false, bool clearPerplexity = false,
         bool clearKimi = false, bool clearOpenAi = false, bool clearAnthropic = false)
     {
@@ -154,7 +153,7 @@ public class AccountController : Controller
         await _keys.SaveAsync(new ApiKeyEdit(
             deepSeekKey, clearDeepSeek, fmpKey, clearFmp, perplexityKey, clearPerplexity,
             kimiKey, clearKimi, openAiKey, clearOpenAi, anthropicKey, clearAnthropic,
-            parsingProvider, parsingModel, webSearchModel));
+            parsingProvider, webSearchModel));
 
         TempData["ApiKeysSaved"] = "Your API keys have been updated.";
         return RedirectToAction(nameof(ApiKeys));
