@@ -2,26 +2,11 @@
 namespace simple_bloomberg_terminal.Tests;
 
 /// <summary>
-/// Deterministic stand-in for <see cref="IStockApiClient"/> so the refresh flow runs offline.
-/// Returns canned EDGAR facts/filings for Apple's CIK; any other CIK yields null facts
-/// (simulating SEC's 404 -> the service maps that to 422 "not an SEC filer").
+/// Deterministic stand-in for <see cref="IStockApiClient"/> so filing tests run offline.
 /// </summary>
 public class FakeStockApiClient : IStockApiClient
 {
     public const string AppleCik10 = "0000320193"; // matches the seeded Apple company
-
-    public Task<EdgarCompanyFacts?> GetCompanyFacts(string cik10)
-    {
-        if (cik10 != AppleCik10) return Task.FromResult<EdgarCompanyFacts?>(null);
-
-        var usGaap = new Dictionary<string, EdgarConcept>
-        {
-            ["Revenues"] = Concept(383_000_000_000, 2023, "2023-09-30"),
-            ["CostOfRevenue"] = Concept(214_000_000_000, 2023, "2023-09-30"),
-            ["OperatingExpenses"] = Concept(55_000_000_000, 2023, "2023-09-30"),
-        };
-        return Task.FromResult<EdgarCompanyFacts?>(new EdgarCompanyFacts(new EdgarFacts(usGaap)));
-    }
 
     public Task<EdgarSubmissions?> GetSubmissions(string cik10)
     {
@@ -50,18 +35,7 @@ public class FakeStockApiClient : IStockApiClient
         Task.FromResult<IReadOnlyList<EdgarTicker>>(
             new[] { new EdgarTicker(320193, "AAPL", "Apple Inc.") });
 
-    public Task<string?> GetCompanyFactsJson(string cik10) =>
-        Task.FromResult<string?>(cik10 == AppleCik10
-            ? "{\"cik\":320193,\"entityName\":\"Apple Inc.\",\"facts\":{\"us-gaap\":{\"Revenues\":{\"units\":{\"USD\":[{\"end\":\"2023-09-30\",\"val\":383000000000,\"fy\":2023,\"form\":\"10-K\"}]}}}}}"
-            : null);
-
     public Task<string?> GetFilingDocument(string cik, string accessionNoDashes, string primaryDocument) =>
         Task.FromResult<string?>(
             $"FILING {cik}/{accessionNoDashes}/{primaryDocument}\nApple Inc. Form 10-K — total net sales 383,285 (in millions).");
-
-    private static EdgarConcept Concept(double val, int fy, string end) =>
-        new(new Dictionary<string, List<EdgarFact>>
-        {
-            ["USD"] = [new EdgarFact(end, val, fy, "FY", "10-K")]
-        });
 }

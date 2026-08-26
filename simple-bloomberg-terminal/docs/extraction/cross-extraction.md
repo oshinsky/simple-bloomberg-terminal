@@ -17,7 +17,7 @@ The source agent (RISK) **already found the fact** — its parallel workers read
 text is in its context. So the hand-off must NOT re-run the target segment's worker scan: that
 would re-discover something we already hold. The target agent is *handed the finding* in place of
 a worker summary, exactly the way a normal scan hands the worker digest to the lead analyst
-(`ExtractionController.cs` ScanAutoAsync seed turn).
+(`ExtractionController.cs` RunFastWorkerScanAsync seed turn).
 
 Two distinct kinds of knowledge, deliberately kept in separate agents so neither is polluted:
 
@@ -38,9 +38,8 @@ to dress an already-found fact in the target segment's schema. That's a formatti
    prompt learns ONLY this tiny block (~15 tokens). It never carries another segment's save schema,
    so it is never poisoned by cross-segment concerns.
 3. **A hand-off spawns a second agent for the target segment — with its workers OFF.** No re-scan.
-   The spawned agent is grounded on the `seed` text the source handed it (plus the *cached* target
-   XBRL view if one exists — `GetXbrlViewAsync`, no worker swarm), and runs one turn whose first
-   user message IS the `seed`. The target agent's system prompt (`SystemFor(node)`) supplies the
+   The spawned agent is grounded on the `seed` text the source handed it and runs one turn whose first
+   user message IS the `seed`. The target agent's system prompt (`LeadAgentPromptFor(node)`) supplies the
    save schema.
 4. **Propose-and-confirm is preserved.** The spawned agent proposes a ` ```save ` block in the
    target node's saves checklist; the user still ticks + Save. Nothing auto-writes to the DB from
@@ -58,13 +57,13 @@ The source agent emits, alongside its normal reply, a fenced block — mirroring
 
 - `node` — target segment: `COST` | `REVENUE` | `RISK`.
 - `seed` — the request plus the **verbatim source passage**. This passage must ride along because
-  it lives in the *source* segment's grounding (Item 1A), which the target agent never reads. The
+  it lives in the *source* segment's context (Item 1A), which the target agent never reads. The
   source agent quotes it from its own findings digest.
 
 Filing identifiers (companyId, accession, doc, form) are NOT in the block — the front-end already
 holds them for the source widget and reuses them on spawn. Only segment-local knowledge travels.
 
-### Source-prompt addition (per segment, in `ExtractionChatService.SystemFor`)
+### Source-prompt addition (per segment, in `ExtractionChatService.LeadAgentPromptFor`)
 
 Add to each node's system prompt, after the `save`-block instructions:
 
@@ -94,7 +93,7 @@ Mirror the existing save-block plumbing:
 
 ## Back-end — worker-less spawn endpoint
 
-`scan-auto-async` always runs `ScanAutoAsync` (the ~36 worker LLM calls). For a hand-off we want a
+`scan-auto-async` always runs `RunFastWorkerScanAsync` (the fast-worker LLM calls). For a hand-off we want a
 job container + one grounded formatting turn, no workers. Add:
 
 `POST /extraction/scan-handoff/{companyId:long}?accession&doc&node&form&companyName&filingLabel`
@@ -102,11 +101,9 @@ with body `{ "seed": "<the handoff seed>" }`.
 
 It mirrors `scan-auto-async` EXCEPT:
 
-- It does **not** call `extractor.ScanAutoAsync` (no worker swarm, no triage).
+- It does **not** call `fastWorkerScan.RunFastWorkerScanAsync` (no fast worker agents).
 - It creates the `ScanJob` shell (CompanyId, Accession, Doc, Node, Form, FilingLabel) and marks the
   section tree as not-applicable (or omits it) — there is no scan to display.
-- `job.Xbrl = await chat.GetXbrlViewAsync(companyId, accession, parsedNode)` — cheap, cached, gives
-  the formatting turn the audited figures if any are tagged. Optional but free.
 - The first (and only auto) turn's seed is the handoff `seed`, not "Summarize the candidates":
   ```csharp
   var seed = new List<ChatMessage> { new("user", req.Seed) };
@@ -115,16 +112,15 @@ It mirrors `scan-auto-async` EXCEPT:
 - `job.Status = Done` once the formatting turn streams in; the widget then shows the proposed
   ` ```save ` block in the target node's checklist, ready to tick + Save.
 
-`StreamReplyAsync`'s grounding (`GroundingAsync`) will try `GetOrScanDigestAsync`, which is a
-**cache read** — if the target was scanned earlier it grounds on that for free; if not, the agent
-grounds on the `seed` + XBRL alone, which is exactly enough to format a fact the source already
+`StreamReplyAsync` builds lead-agent context with `BuildLeadAgentContextAsync`, which can call
+`GetOrCreateFastWorkerDigestAsync`. This is a **cache read**: if the target was scanned earlier, its
+digest is reused for free; otherwise, the agent uses the `seed`, which is enough to format a fact the source already
 found. No worker scan is triggered by this path.
 
 ## Why not the alternatives
 
 - **Source agent fills the target save block itself** — would inject the target's save schema into
-  the source prompt (context poisoning) and have the source fill a `value` without the target's
-  XBRL grounding. Rejected (decision #2 keeps the source pure).
+  the source prompt and blur node ownership. Rejected because the source should stay focused.
 - **Native LLM tool-calling** — the stream layer is pure text SSE across DeepSeek / Anthropic /
   OpenAI-compat on BYO keys; tool-calling means per-provider `tool_calls` buffering + execute/resume
   loops for zero benefit over a fenced block the parser already understands.
@@ -139,6 +135,6 @@ RISK agent emits ```handoff {node:"COST", seed:"<request + verbatim Item 1A pass
 target COST job?
    exists → POST /scan-jobs/{id}/reply  (seed as a follow-up turn)
    none   → POST /scan-handoff/{companyId}?node=COST  (worker-less job shell, seed = first turn)
-        ↓ COST agent: SystemFor(COST) schema + grounding(seed [+ cached XBRL]) — NO workers
+        ↓ COST lead agent: LeadAgentPromptFor(COST) schema + seed context — NO fast workers
 COST agent emits ```save {COST schema}``` → COST checklist → user ticks + Save → save-batch(node=COST)
 ```

@@ -191,7 +191,6 @@ void ConfigureHttp(HttpClient http, string section)
 
 // External stock data (SEC EDGAR): typed HttpClient + the one service with real logic.
 builder.Services.AddHttpClient<IStockApiClient, StockApiClient>(c => ConfigureHttp(c, "Edgar"));
-builder.Services.AddScoped<IStockService, StockService>();
 
 // Parsing & structuring LLM: the reviewer (Mode A), filing extractor (Mode B), chat and industry
 // classifier all go through IChatLlm, which routes to whichever provider the signed-in user picked.
@@ -224,15 +223,13 @@ builder.Services.AddScoped<IChatProvider>(sp => new AnthropicChatProvider(
     sp.GetRequiredService<IUserApiKeyProvider>(),
     sp.GetRequiredService<ILogger<AnthropicChatProvider>>()));
 builder.Services.AddScoped<IChatLlm, ChatLlmRouter>();
-builder.Services.AddScoped<IFilingExtractionService, FilingExtractionService>();
-builder.Services.AddScoped<IXbrlInstanceReader, XbrlInstanceReader>();
-// Reads the SEC's own rendered statement reports (R*.htm) for a filing — the Item 8 table source.
-// Plain scoped service: it borrows the EDGAR transport through IStockApiClient rather than owning one.
-builder.Services.AddScoped<IFilingReportReader, FilingReportReader>();
+builder.Services.AddScoped<IFastWorkerScanService, FastWorkerScanService>();
+builder.Services.AddScoped<IFilingAnalysisContextService, FilingAnalysisContextService>();
+builder.Services.AddScoped<ILeadAgentRunner, LeadAgentRunner>();
 builder.Services.AddScoped<IExtractionChatService, ExtractionChatService>();
 // Measurement harness for the COST lead agent (repeatability / evidence presence / precision-sheet).
-// Read-only: it drives the existing scan + chat services and writes nothing to the database.
-builder.Services.AddScoped<LedgerMeasurementService>();
+// Read-only: it drives the shared scan, context, and lead-agent services and writes nothing to the database.
+builder.Services.AddScoped<CounterpartyMeasurementService>();
 // Detached measurement batches, polled by the tracker. Singleton for the same reason ScanJobStore is:
 // the work outlives the request that started it.
 builder.Services.AddSingleton<MeasureJobStore>();

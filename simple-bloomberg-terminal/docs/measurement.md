@@ -10,7 +10,7 @@ Two LLM layers, graded separately:
 | Layer | Model tier | Job |
 |---|---|---|
 | **Fast workers** | DeepSeek fast | Read one chunk of the filing, return counterparties + verbatim evidence as JSON |
-| **Lead agent** | DeepSeek pro | Read the merged worker findings + tagged XBRL, return the consolidated ledger |
+| **Lead agent** | DeepSeek pro | Read the merged worker findings and return the consolidated ledger |
 
 One filing is split into **chunks** (~34 for a 10-K). A chunk is one worker call, covering either
 several packed sub-headings of an SEC Item or one rendered financial statement.
@@ -48,11 +48,11 @@ Three things make concurrency safe:
 
 1. **Per-run DI scope.** `ICompanyRepository` is scoped and both services use it, so a shared scope
    meant concurrent operations on one `DbContext`. Each run resolves its own services.
-2. **Explicit grounding.** Each run's lead call is handed *its own* scan's digest rather than
+2. **Explicit lead-agent context.** Each run's lead-agent call is handed *its own* fast-worker digest rather than
    resolving one, because the `filing-findings` cache key is per-filing — a resolving run would be
    graded against whichever concurrent scan finished last.
-3. **Shared deterministic caches.** The raw filing, parsed headings and rendered reports are pure
-   fetch/parse results, reused across runs on purpose: sharing them removes no model variance.
+3. **Shared deterministic caches.** The raw filing and parsed headings are pure fetch/parse results,
+   reused across runs on purpose: sharing them removes no model variance.
 
 **Worker claims are captured pre-merge**, from the raw per-chunk replies. Post-merge output would
 fold in scheduler nondeterminism, since which duplicate survives depends on task completion order.
@@ -84,9 +84,8 @@ measured variance to what the models do with identical input.
 a human reviewer, unmeasurable across runs. A fixed prompt now triggers a structured `ledger` block
 with the fixed column set. Conversational behaviour is unchanged.
 
-**4. Evidence corpus corrected.** Item 8 does not come from the filing document — it comes from
-SEC's separately fetched rendered report files. Checking evidence only against the document scored
-every financial-statement quote as absent despite being verbatim.
+**4. Evidence corpus is exact.** Evidence is checked against the precise primary-filing chunks sent to
+workers. The pipeline does not download or parse separately rendered financial-table reports.
 
 ## Other changes
 

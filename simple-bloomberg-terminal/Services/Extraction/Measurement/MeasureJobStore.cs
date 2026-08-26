@@ -1,38 +1,32 @@
 using System.Collections.Concurrent;
 
-namespace simple_bloomberg_terminal.Services.Extraction;
+namespace simple_bloomberg_terminal.Services.Extraction.Measurement;
 
 public enum MeasureJobStatus { Running, Done, Error }
 
-/// <summary>One progress event from a measurement run. The fast layer's events mirror
-/// <see cref="ScanProgress"/> (a plan once, then per-chunk transitions); the strong layer reports
-/// only when its single call lands. <paramref name="Filing"/> is stamped by the controller, which
-/// knows the batch, not by the service, which sees one filing at a time.</summary>
+// One measurement progress event. Fast workers report planning and chunk transitions; the lead agent
+// reports completion. The controller adds the filing because it owns the batch context.
 public record MeasureProgress(
     int Run, string Phase,
-    IReadOnlyList<ScanChunkInfo>? Plan = null,
+    IReadOnlyList<FastWorkerChunkInfo>? Plan = null,
     int ChunkIndex = -1, int Found = 0,
-    int WorkerItems = 0, int LeadItems = 0,
+    int FastWorkerClaims = 0, int LeadAgentClaims = 0,
     string Filing = "", string? Error = null);
 
-/// <summary>One run's live state: the fast agent's per-chunk tree, then the strong agent's result.
-/// <see cref="ScanChunkState"/> is reused from the scan widget — same shape, same meaning.</summary>
+// Live state for one run, reusing the scan widget's chunk model before storing the lead-agent result.
 public class MeasureRunState
 {
     public string Filing { get; init; } = "";
     public int Run { get; init; }
-    public string Phase { get; set; } = "queued";   // queued | scanning | lead | done
+    public string Phase { get; set; } = "queued";   // queued | scanning | lead-agent | done
     public List<ScanChunkState> Chunks { get; } = new();
-    public int WorkerItems { get; set; }
+    public int FastWorkerClaims { get; set; }
     public int Errors { get; set; }
-    public int LeadItems { get; set; }
+    public int LeadAgentClaims { get; set; }
 }
 
-/// <summary>
-/// One detached measurement batch. Lives in <see cref="MeasureJobStore"/> (a singleton) so it
-/// outlives the request that started it: the measurement runs for minutes and the page polls for
-/// progress rather than holding a request open, exactly as <see cref="ScanJob"/> does for a scan.
-/// </summary>
+// State for one detached measurement batch. The singleton store lets long runs outlive the request
+// while the page polls their progress.
 public class MeasureJob
 {
     public string Id { get; init; } = Guid.NewGuid().ToString("n");
@@ -42,16 +36,14 @@ public class MeasureJob
     public string? Error { get; set; }
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
 
-    // Mutated from N concurrent runs' progress callbacks and read by the status poll, so both sides
-    // take the lock — these are plain mutable objects, not thread-safe on their own.
+    // Concurrent run callbacks and status polling share mutable state, so both require the lock.
     public List<MeasureRunState> RunStates { get; } = new();
     public object Lock { get; } = new();
 
-    public List<FilingMeasurement> Results { get; } = new();
+    public List<CounterpartyMeasurementResult> Results { get; } = new();
     public string RowsJson { get; set; } = "[]";
 
-    /// <summary>Fold one progress event into the live tree. Creates the run's row on first sight, so
-    /// the order events arrive in doesn't matter.</summary>
+    // Applies a progress event, creating its run on first sight so event order does not matter.
     public void Apply(MeasureProgress p)
     {
         lock (Lock)
@@ -93,14 +85,18 @@ public class MeasureJob
                     state.Errors++;
                     break;
 
-                case "scan-done":
-                    state.Phase = "lead";
-                    state.WorkerItems = p.WorkerItems;
+                case "fast-worker-scan-done":
+                    state.Phase = "lead-agent";
+                    state.FastWorkerClaims = p.FastWorkerClaims;
                     break;
 
-                case "lead-done":
+                case "lead-agent-done":
                     state.Phase = "done";
-                    state.LeadItems = p.LeadItems;
+                    state.LeadAgentClaims = p.LeadAgentClaims;
+                    break;
+
+                case "lead-agent-error":
+                    state.Errors++;
                     break;
             }
         }
@@ -110,8 +106,7 @@ public class MeasureJob
         index >= 0 && index < state.Chunks.Count ? state.Chunks[index] : null;
 }
 
-/// <summary>Tracks detached measurement batches across requests. Singleton, like
-/// <see cref="ScanJobStore"/>; the browser holds the job id for the page it started.</summary>
+// Tracks detached measurement batches across requests while the browser retains the active job ID.
 public class MeasureJobStore
 {
     private readonly ConcurrentDictionary<string, MeasureJob> _jobs = new();

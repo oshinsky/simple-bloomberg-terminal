@@ -1082,7 +1082,7 @@
 | Route source | `[Route("extraction")]` + `[Route("")]` |
 | View | Views/Extraction/Index.cshtml |
 | Parameters | companyId: long? (query string, optional); revenueSourceId: long? (query string, optional — REVENUE deep-link prefill only); node: string? (query string, optional — `REVENUE`\|`COST`\|`RISK`, default `REVENUE`) |
-| Notes | Phase-1 split-screen extraction UI — company autocomplete picker plus a Node dropdown (Revenue/Cost/Risk) that drives which SEC Items are scanned (Revenue/Cost → Items 7,8; Risk → Items 1A,7A), the AI prompts, and which entity a save lands in (RevenueSource / CostSource / CompanyRisk). Left pane = source cells plus the row's proof pair (Reference + Evidence, with USE SELECTION copying the right pane's text selection into Evidence), right pane = JSON from `POST /api/stock/refresh/{companyId}`; SAVE ROW writes the row and its proof in one request. `?revenueSourceId=` deep-links prefill an existing RevenueSource row (REVENUE node only). The page JS also reads `accession`, `doc`, `form`, and `jobId` from the query string (not bound server-side) to rehydrate the filing/scan context when the user clicks back from the notification widget to save a background scan's yielded objects |
+| Notes | Split-screen extraction UI — company autocomplete picker plus a Node dropdown (Revenue/Cost/Risk) that drives SEC Item routing, prompts, and the saved entity. The right pane browses primary SEC filings; selected filing text becomes Evidence. `?revenueSourceId=` deep-links an existing RevenueSource row. The page JS also reads `accession`, `doc`, `form`, and `jobId` from the query string to rehydrate a filing/scan context. |
 
 ---
 
@@ -1110,7 +1110,7 @@
 | Route source | `[Route("extraction")]` + `[Route("reference")]` |
 | View | — (JSON `ReferenceResult` record: RevenueSourceId) |
 | Parameters | JSON body (ReferenceRequest): companyId, revenueSourceId?, node (`REVENUE`\|`COST`\|`RISK`, default `REVENUE`), sourceType, name, value, percentage, note (RISK rows), relatedCompanyId, reference, evidence, filingAccessionNumber?, filingForm?, filingDate?, filingUrl? |
-| Notes | Sets one row's proof: upserts the node's source row (RevenueSource / CostSource / CompanyRisk; create if new, DataSource=MANUAL) with its `reference` + `evidence`, plus the `FilingId` from upserting the sent accession (null when the text came from Company Facts). Responses: 200 OK; 400 (missing companyId/name/evidence, or invalid classification); 404 (source row id not found). Superseded in the UI by `POST /extraction/save` (endpoint still present but no longer called) |
+| Notes | Sets one row's proof: upserts the node's source row (RevenueSource / CostSource / CompanyRisk; create if new, DataSource=MANUAL) with its `reference` + `evidence`, plus the `FilingId` when filing metadata is supplied. Responses: 200 OK; 400 (missing companyId/name/evidence, or invalid classification); 404 (source row id not found). Superseded in the UI by `POST /extraction/save` (endpoint still present but no longer called) |
 
 ---
 
@@ -1168,7 +1168,7 @@
 | View | — (JSON `{ jobId }`) |
 | Parameters | JSON body (`MeasureViewModel`) — targets: string? (one filing per line, `companyId, accession, doc[, form]`), runs: int (clamped to 2–20) |
 | Auth | `[Authorize]` (class-level — any authenticated user); also requires the user's configured parsing-provider API key (`RequireParsingKey`, else `MissingApiKeyException`) |
-| Notes | Detached, like `scan-auto-async` — the batch runs for minutes, so holding the request open would leave the page nothing to show and would die to any proxy timeout. Parses the target lines, registers a `MeasureJob` in the singleton in-memory `MeasureJobStore` (Services/Extraction/MeasureJobStore.cs), fires the run on a background `Task` with its OWN DI scope (the request scope and its DbContext are gone the moment this returns, and the user's API keys are snapshotted onto the new scope), and returns the `jobId` at once for the tracker to poll. Malformed target lines are skipped and a single filing's failure is caught per-line and recorded as a `failed` row rather than voiding the batch. READ-ONLY — persists nothing to the database. Responses: 200 OK (`{ jobId }`); 400 (no valid target lines) |
+| Notes | Detached, like `scan-auto-async` — the batch runs for minutes, so holding the request open would leave the page nothing to show and would die to any proxy timeout. Parses the target lines, registers a `MeasureJob` in the singleton in-memory `MeasureJobStore` (Services/Extraction/Measurement/MeasureJobStore.cs), fires the run on a background `Task` with its OWN DI scope (the request scope and its DbContext are gone the moment this returns, and the user's API keys are snapshotted onto the new scope), and returns the `jobId` at once for the tracker to poll. Malformed target lines are skipped and a single filing's failure is caught per-line and recorded as a `failed` row rather than voiding the batch. READ-ONLY — persists nothing to the database. Responses: 200 OK (`{ jobId }`); 400 (no valid target lines) |
 
 ---
 
@@ -1212,7 +1212,7 @@
 | Route source | `[Route("extraction")]` + `[Route("auto-extract/{companyId:long}")]` |
 | View | — (JSON source suggestions for the human to confirm) |
 | Parameters | companyId: long (route, constrained); accession: string (query, required); doc: string (query, required); node: string? (query string, optional — `REVENUE`\|`COST`\|`RISK`, default `REVENUE`); form: string? (query string, optional — SEC form type, e.g. `10-K`, forwarded to the sec2md markdown sidecar) |
-| Notes | Mode B — AI (`IFilingExtractionService`) reads one SEC filing and proposes rows + their proof for the active node (revenue / cost / company-risk) for the human to confirm; persists nothing (the page fills the form and the existing save path freezes proof). Responses: 200 OK; 400 (missing accession/doc); 404 (no such company); 503 (Claude unreachable) |
+| Notes | Mode B — AI (`IFastWorkerScanService`) reads one SEC filing and proposes rows + their proof for the active node (revenue / cost / company-risk) for the human to confirm; persists nothing (the page fills the form and the existing save path freezes proof). Responses: 200 OK; 400 (missing accession/doc); 404 (no such company); 503 (Claude unreachable) |
 
 ---
 
@@ -1226,7 +1226,7 @@
 | Route source | `[Route("extraction")]` + `[Route("scan-auto/{companyId:long}")]` |
 | View | — (JSON `{ scanned, found }`) |
 | Parameters | companyId: long (route, constrained); accession: string (query, required); doc: string (query, required); node: string? (query string, optional — `REVENUE`\|`COST`\|`RISK`, default `REVENUE`); form: string? (query string, optional — SEC form type, e.g. `10-K`, forwarded to the sec2md markdown sidecar) |
-| Notes | Mode B (auto) — triages every bold heading by title, scans the AI-chosen ones in parallel, and stashes the digest as the AI Chat's grounding; persists nothing to the DB. Replaces the hand-pick flow (`headings` + `scan-headings`). Responses: 200 OK; 400 (missing accession/doc); 404 (no such company); 503 (DeepSeek/SEC unreachable) |
+| Notes | Mode B (auto) — triages every bold heading by title, scans the AI-chosen ones in parallel, and stores the fast-worker digest for the lead agent; persists nothing to the DB. Replaces the hand-pick flow (`headings` + `scan-headings`). Responses: 200 OK; 400 (missing accession/doc); 404 (no such company); 503 (DeepSeek/SEC unreachable) |
 
 ---
 
@@ -1235,7 +1235,7 @@
 | Field | Value |
 |---|---|
 | Controller | ExtractionController |
-| Action | ScanAutoAsync |
+| Action | RunFastWorkerScanAsync |
 | HTTP | POST |
 | Route source | `[Route("extraction")]` + `[Route("scan-auto-async/{companyId:long}")]` |
 | View | — (JSON `{ jobId }`) |
@@ -1469,20 +1469,6 @@
 
 ---
 
-## api/stock/refresh/{companyId}
-
-| Field | Value |
-|---|---|
-| Controller | StockController (Controllers/Api/) |
-| Action | Refresh |
-| HTTP | POST |
-| Route source | `[ApiController]` + `[Route("api/stock")]` + `[HttpPost("refresh/{companyId:long}")]` |
-| View | — (JSON `CompanyDto`) |
-| Parameters | companyId: long (route, constrained) |
-| Notes | Fetches SEC EDGAR data for the company and (re)persists EDGAR-tagged RevenueSource/CostSource/Event rows. Responses: 200 OK; 404 (no such company); 409 (company has no CIK / non-filer); 422 (CIK not an SEC filer); 503 (SEC unreachable/timeout) |
-
----
-
 ## api/stock/resolve/{ticker}
 
 | Field | Value |
@@ -1494,20 +1480,6 @@
 | View | — (JSON `{ ticker, cik }`) |
 | Parameters | ticker: string (route) |
 | Notes | Read-only ticker -> CIK lookup. Returns 200 OK or 404 if the ticker is unknown |
-
----
-
-## api/stock/facts/{companyId}
-
-| Field | Value |
-|---|---|
-| Controller | StockController (Controllers/Api/) |
-| Action | Facts |
-| HTTP | GET |
-| Route source | `[ApiController]` + `[Route("api/stock")]` + `[HttpGet("facts/{companyId:long}")]` |
-| View | — (raw SEC XBRL companyfacts JSON, passed through as application/json) |
-| Parameters | companyId: long (route, constrained) |
-| Notes | Read-only proxy of SEC `/api/xbrl/companyfacts/CIK{cik}.json`; no persistence. Responses: 200 OK; 404 (no such company); 409 (company has no CIK); 422 (CIK not an SEC filer); 503 (SEC unreachable) |
 
 ---
 
@@ -1610,7 +1582,7 @@
 | View | — (the filing's primary document markup, returned as text/plain) |
 | Parameters | id: long (route, constrained) |
 | Auth | `[Authorize]` class-level (any authenticated user — no role restriction, unlike Create/Update/Delete) |
-| Notes | Read-only proxy of the stored filing's primary document from sec.gov Archives — the document file name comes from `Filing.PrimaryDocUrl` (its last path segment) and the CIK from the owning company; it reads/writes the same `IMemoryCache` entry (`FilingExtractionService.RawKey`) the extraction scan pipeline uses, so an already-scanned filing is served without a second SEC call. Backs the in-app evidence viewer (wwwroot/js/evidence.js), which opens the filing scrolled to the verbatim quote stored on a revenue/cost/risk row. Responses: 200 OK; 404 (no filing / document not found); 409 (filing has no PrimaryDocUrl, or company has no CIK); 503 (SEC unreachable) |
+| Notes | Read-only proxy of the stored filing's primary document from sec.gov Archives — the document file name comes from `Filing.PrimaryDocUrl` (its last path segment) and the CIK from the owning company; it reads/writes the same `IMemoryCache` entry (`FastWorkerScanService.RawKey`) the extraction scan pipeline uses, so an already-scanned filing is served without a second SEC call. Backs the in-app evidence viewer (wwwroot/js/evidence.js), which opens the filing scrolled to the verbatim quote stored on a revenue/cost/risk row. Responses: 200 OK; 404 (no filing / document not found); 409 (filing has no PrimaryDocUrl, or company has no CIK); 503 (SEC unreachable) |
 
 ---
 

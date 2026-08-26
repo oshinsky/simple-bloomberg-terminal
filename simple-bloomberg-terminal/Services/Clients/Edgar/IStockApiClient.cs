@@ -7,7 +7,6 @@ namespace simple_bloomberg_terminal.Services.Clients.Edgar;
 /// </summary>
 public interface IStockApiClient
 {
-    Task<EdgarCompanyFacts?> GetCompanyFacts(string cik10);
     Task<EdgarSubmissions?> GetSubmissions(string cik10);
     Task<string?> ResolveCik(string ticker);
 
@@ -20,8 +19,5 @@ public interface IStockApiClient
     // companies FMP returned none for, by matching the company name against the SEC title.
     Task<IReadOnlyList<EdgarTicker>> GetTickerEntries();
 
-    // Raw passthroughs for the extraction browser (right pane). Return the literal SEC payload
-    // (no mapping) so the user can select proof text. 404 -> null.
-    Task<string?> GetCompanyFactsJson(string cik10);
     Task<string?> GetFilingDocument(string cik, string accessionNoDashes, string primaryDocument);
 }

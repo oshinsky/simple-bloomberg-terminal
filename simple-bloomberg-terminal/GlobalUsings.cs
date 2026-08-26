@@ -9,6 +9,8 @@ global using simple_bloomberg_terminal.Services.Clients.Yahoo;
 global using simple_bloomberg_terminal.Services.Clients.Reference;
 global using simple_bloomberg_terminal.Services.Clients.IndexSrc;
 global using simple_bloomberg_terminal.Services.Extraction;
+global using simple_bloomberg_terminal.Services.Extraction.Chat;
+global using simple_bloomberg_terminal.Services.Extraction.Measurement;
 global using simple_bloomberg_terminal.Services.Discovery;
 global using simple_bloomberg_terminal.Services.Provisioning;
 global using simple_bloomberg_terminal.Services.Indices;

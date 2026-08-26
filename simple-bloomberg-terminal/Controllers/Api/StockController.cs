@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using simple_bloomberg_terminal.Dtos;
 using simple_bloomberg_terminal.Repositories;
 
 namespace simple_bloomberg_terminal.Controllers.Api;
@@ -8,109 +7,58 @@ namespace simple_bloomberg_terminal.Controllers.Api;
 [ApiController]
 [Route("api/stock")]
 [Authorize]
-public class StockController : ControllerBase
+public class StockController(ICompanyRepository companies, IStockApiClient client) : ControllerBase
 {
-    private readonly ICompanyRepository _companies;
-    private readonly IStockService _stock;
-    private readonly IStockApiClient _client;
-
-    public StockController(ICompanyRepository companies, IStockService stock, IStockApiClient client)
-    {
-        _companies = companies;
-        _stock = stock;
-        _client = client;
-    }
-
-    // Fetch EDGAR data for a seeded company and (re)persist its EDGAR-tagged source/event rows.
-    [HttpPost("refresh/{companyId:long}")]
-    [Authorize(Roles = "Admin,Manager")]
-    public async Task<ActionResult<CompanyDto>> Refresh(long companyId)
-    {
-        var company = _companies.GetById(companyId);
-        if (company is null) return NotFound();
-        if (string.IsNullOrWhiteSpace(company.Cik))
-            return Conflict("Company has no CIK — not an SEC filer.");
-
-        try
-        {
-            return Ok(await _stock.RefreshAsync(company));
-        }
-        catch (EdgarException ex)
-        {
-            return StatusCode(ex.StatusCode, ex.Message);
-        }
-    }
-
-    // Read-only ticker -> CIK helper.
     [HttpGet("resolve/{ticker}")]
     public async Task<IActionResult> Resolve(string ticker)
     {
-        var cik = await _client.ResolveCik(ticker);
+        var cik = await client.ResolveCik(ticker);
         return cik is null ? NotFound() : Ok(new { ticker, cik });
     }
 
-    // ---- read-only EDGAR browser (right pane of /extraction) — no persistence ----
-
-    // Raw XBRL company facts JSON, straight from SEC.
-    [HttpGet("facts/{companyId:long}")]
-    public async Task<IActionResult> Facts(long companyId)
-    {
-        if (TryGetFilerCik(companyId, out var cik10, out var fail)) return fail!;
-        try
-        {
-            var json = await _client.GetCompanyFactsJson(cik10!);
-            if (json is null) return UnprocessableEntity("CIK is not an SEC filer.");
-            return Content(json, "application/json");
-        }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
-        {
-            return StatusCode(StatusCodes.Status503ServiceUnavailable, "SEC unreachable.");
-        }
-    }
-
-    // The company's filing list (form, dates, accession, primary document + a ready URL).
     [HttpGet("filings/{companyId:long}")]
     public async Task<IActionResult> Filings(long companyId)
     {
-        var company = _companies.GetById(companyId);
+        var company = companies.GetById(companyId);
         if (company is null) return NotFound();
         if (string.IsNullOrWhiteSpace(company.Cik)) return Conflict("Company has no CIK — not an SEC filer.");
 
-        EdgarSubmissions? subs;
-        try { subs = await _client.GetSubmissions(Cik.Pad(company.Cik)); }
+        EdgarSubmissions? submissions;
+        try { submissions = await client.GetSubmissions(Cik.Pad(company.Cik)); }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
             return StatusCode(StatusCodes.Status503ServiceUnavailable, "SEC unreachable.");
         }
-        if (subs?.Filings?.Recent is not { Form: { } forms }) return UnprocessableEntity("No filings.");
+        if (submissions?.Filings?.Recent is not { Form: { } forms })
+            return UnprocessableEntity("No filings.");
 
         var cikNoPad = Cik.Trim(company.Cik);
-        var r = subs.Filings.Recent;
-        var list = Enumerable.Range(0, forms.Count).Select(i =>
+        var recent = submissions.Filings.Recent;
+        var list = Enumerable.Range(0, forms.Count).Select(index =>
         {
-            var accession = r.AccessionNumber?.ElementAtOrDefault(i);
-            var doc = r.PrimaryDocument?.ElementAtOrDefault(i);
+            var accession = recent.AccessionNumber?.ElementAtOrDefault(index);
+            var document = recent.PrimaryDocument?.ElementAtOrDefault(index);
             return new
             {
-                form = forms[i],
-                filingDate = r.FilingDate?.ElementAtOrDefault(i),
-                reportDate = r.ReportDate?.ElementAtOrDefault(i),
+                form = forms[index],
+                filingDate = recent.FilingDate?.ElementAtOrDefault(index),
+                reportDate = recent.ReportDate?.ElementAtOrDefault(index),
                 accessionNumber = accession,
-                primaryDocument = doc,
-                description = r.PrimaryDocDescription?.ElementAtOrDefault(i),
-                documentUrl = accession is not null && doc is not null
-                    ? $"https://www.sec.gov/Archives/edgar/data/{cikNoPad}/{accession.Replace("-", "")}/{doc}"
+                primaryDocument = document,
+                description = recent.PrimaryDocDescription?.ElementAtOrDefault(index),
+                documentUrl = accession is not null && document is not null
+                    ? $"https://www.sec.gov/Archives/edgar/data/{cikNoPad}/{accession.Replace("-", "")}/{document}"
                     : null
             };
         }).ToList();
         return Ok(list);
     }
 
-    // Proxy one filing's primary document text into the pane so proof can be selected.
     [HttpGet("filing/{companyId:long}")]
-    public async Task<IActionResult> Filing(long companyId, [FromQuery] string accession, [FromQuery] string doc)
+    public async Task<IActionResult> Filing(
+        long companyId, [FromQuery] string accession, [FromQuery] string doc)
     {
-        var company = _companies.GetById(companyId);
+        var company = companies.GetById(companyId);
         if (company is null) return NotFound();
         if (string.IsNullOrWhiteSpace(company.Cik)) return Conflict("Company has no CIK — not an SEC filer.");
         if (string.IsNullOrWhiteSpace(accession) || string.IsNullOrWhiteSpace(doc))
@@ -118,24 +66,12 @@ public class StockController : ControllerBase
 
         try
         {
-            var body = await _client.GetFilingDocument(Cik.Trim(company.Cik), accession.Replace("-", ""), doc);
-            if (body is null) return NotFound("Filing document not found.");
-            return Content(body, "text/plain");   // raw text; client renders it for selection
+            var body = await client.GetFilingDocument(Cik.Trim(company.Cik), accession.Replace("-", ""), doc);
+            return body is null ? NotFound("Filing document not found.") : Content(body, "text/plain");
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
             return StatusCode(StatusCodes.Status503ServiceUnavailable, "SEC unreachable.");
         }
-    }
-
-    // Shared lookup: company exists + is an SEC filer -> its padded CIK; else the failure result.
-    private bool TryGetFilerCik(long companyId, out string? cik10, out IActionResult? fail)
-    {
-        cik10 = null; fail = null;
-        var company = _companies.GetById(companyId);
-        if (company is null) { fail = NotFound(); return true; }
-        if (string.IsNullOrWhiteSpace(company.Cik)) { fail = Conflict("Company has no CIK — not an SEC filer."); return true; }
-        cik10 = Cik.Pad(company.Cik);
-        return false;
     }
 }

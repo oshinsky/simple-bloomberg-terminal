@@ -100,9 +100,9 @@ public class SourceCascadeTests : ApiTestBase
         using (var scope = Factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            // Proof from Company Facts: an evidence quote but no filing.
+            // Evidence without a filing association.
             var solo = new RevenueSource(SourceType.SEGMENT, "Solo A", AppleId)
-                { DataSource = DataSource.MANUAL, Evidence = "from company facts" };
+                { DataSource = DataSource.MANUAL, Evidence = "standalone evidence" };
             var other = new RevenueSource(SourceType.SEGMENT, "Solo B", AppleId) { DataSource = DataSource.MANUAL };
             db.RevenueSources.AddRange(solo, other);
             db.SaveChanges();

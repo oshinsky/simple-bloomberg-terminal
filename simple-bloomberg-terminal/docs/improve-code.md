@@ -13,7 +13,7 @@ duplication justifies. Each item below is anchored to concrete file:line evidenc
 | Area | Files | Lines | Worst offenders |
 |---|---|---|---|
 | Controllers | 37 (19 MVC, 18 API) | ~4,538 | `ExtractionController` (992), `CompaniesController` (651) |
-| Services | 22 impl | ~3,000 | `CounterpartyDiscoveryService`, `FilingExtractionService` |
+| Services | 22 impl | ~3,000 | `CounterpartyDiscoveryService`, `FastWorkerScanService` |
 | Repositories | 14 impl | ~900 | 6 near-identical contribution repos |
 
 Estimated removable/relocatable duplication: **~900–1000 lines**.
@@ -64,9 +64,9 @@ and `Num(...)` helpers copied verbatim into 3 of them.
 
 Evidence:
 - Slice/parse: `CompanyProfileDiscoveryService.cs:98-146`, `CounterpartyDiscoveryService.cs:249-330`,
-  `FilingExtractionService.cs:333-387`, `ReviewService.cs:104-119`, `IndustryClassifier.cs:43-52`.
+  `FastWorkerScanService.cs`, `ReviewService.cs:104-119`, `IndustryClassifier.cs:43-52`.
 - `Str`/`Num` duplicated: `CompanyProfileDiscoveryService.cs:127-146`,
-  `CounterpartyDiscoveryService.cs:332-355`, `FilingExtractionService.cs:368-387`.
+  `CounterpartyDiscoveryService.cs:332-355`, `FastWorkerScanService.cs`.
 
 **Fix.** A static `LlmJson` helper: `TryExtractObject(string answer) -> JsonDocument?`
 plus `Str(JsonElement, prop)` and `Num(JsonElement, prop)` (handling the `"null"`
@@ -128,7 +128,7 @@ biggest maintainability wins but need care — extract behavior-preserving servi
 ### 2.1 ✅ `ExtractionController` (992 lines) → carve out extraction domain logic
 **Problem.** Controller owns graph/contribution business rules, not just request handling.
 
-Move to a service (e.g. extend existing `IFilingExtractionService`/`IReviewService` or a
+Move to a service (e.g. extend existing `IFastWorkerScanService`/`IReviewService` or a
 new `IContributionWriter`):
 - `UpsertRowByNode` + `UpsertRevenue`/`UpsertCost`/`UpsertRisk` — `ExtractionController.cs:302-428`
   (contribution status, supersession, reviewer gates: pure domain rules).
@@ -261,8 +261,8 @@ static helpers.
 
 **Done (2026-06-15):** `Services/Cik.cs` — `Pad` (digit string → 10-pad), `Trim`
 (strip leading zeros), `Normalize` (filter-to-digits + pad, nullable). Applied repo-wide
-beyond the cited sites: StockController (4), StockService, ExtractionChatService,
-FilingExtractionService, StockApiClient (2); the two private `Normalize`-shaped copies
+beyond the cited sites: StockController, ExtractionChatService,
+FastWorkerScanService, StockApiClient (2); the two private `Normalize`-shaped copies
 (`FmpMapper.NormalizeCik`, `CompanyProvisioningService.ResolveTickerForCik`) now delegate.
 CompaniesController's CIK code had already moved to CompanyProvisioningService in 2.2.
 
@@ -270,7 +270,7 @@ CompaniesController's CIK code had already moved to CompanyProvisioningService i
 Model fallbacks (`deepseek-v4-flash`, `deepseek-v4-pro`, `sonar-pro`) and tuning
 constants (`MaxParallel`, `RecencyYears`, `ContextBudgetChars`, cache TTLs) are scattered
 across services. Consolidate into a strongly-typed options class bound from config so
-they're discoverable and tunable in one place. Evidence: `FilingExtractionService.cs:20,31,40`,
+they're discoverable and tunable in one place. Evidence: `FastWorkerScanService.cs`,
 `ExtractionChatService.cs:30,34`, `ReviewService.cs:18`, `CounterpartyDiscoveryService.cs:50,61-63`.
 
 ---
@@ -299,7 +299,7 @@ they're discoverable and tunable in one place. Evidence: `FilingExtractionServic
    for routing/auth clarity? This conflicts with the "no speculative abstractions" rule —
    needs an explicit call.
 2. **Contribution logic home (2.1/2.4):** extend an existing service
-   (`IReviewService`/`IFilingExtractionService`) or introduce one new `IContributionWriter`?
+   (`IReviewService`/`IFastWorkerScanService`) or introduce one new `IContributionWriter`?
 3. **Repository base (1.1):** confirm all 6 entities can share one marker interface
    (`DeletedAt`, `Status`, `CompanyId`, `Name`) — `CountryAdvantage`/`CountryChallenge`
    lack the `Pending`/`ClearByCompanyAndDataSource` methods, so they may need a thinner base.

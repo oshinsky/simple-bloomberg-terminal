@@ -61,7 +61,7 @@ The left cells are **bound to a `RevenueSource`/`CostSource` row** — nothing i
 
 ### Each row links to its filing
 
-When the proof is selected from an **open filing document** (not the Company Facts JSON), the save upserts a `Filing` by accession number and stores its id on the source row's `FilingId` — see the `Filing` section below. Saving from Company Facts (no filing open) leaves `FilingId` null; the row still carries its quote.
+When proof is selected from an open filing document, the save upserts a `Filing` by accession number and stores its id on the source row's `FilingId`.
 
 ### What gets stored — one proof per row
 
@@ -71,7 +71,7 @@ Since `Company → RevenueSource/CostSource/CompanyRisk` is 1:N, **one filing ex
 |---|---|---|
 | `Reference` | string? | WHERE in the document — the SEC Item / note / subheading (e.g. "Item 7. Management's Discussion") |
 | `Evidence` | string? | the exact verbatim substring, **frozen at save time** and findable by a literal search in the filing |
-| `FilingId` | long? FK→Filings (`Restrict`) | the document both came from; null when the proof came from Company Facts or a web source |
+| `FilingId` | long? FK→Filings (`Restrict`) | the filing both came from; null for non-filing evidence |
 
 Notes:
 - Counterparty (TSMC) is not part of the proof — it's `RelatedCompanyId` on the same row.
@@ -112,7 +112,7 @@ The reference's frozen snapshot answers *what text backs this cell*; the `Filing
 
 ```
 HUMAN ENTRY
-  pick endpoint ─► response renders on right (Company Facts JSON or a filing doc)
+  pick filing ─► primary filing document renders on right
   source row pre-fills cells (if auto-fetched) OR user creates it
   confirm/type the values (left) + select the backing passage (right) ─► USE SELECTION
   SAVE ROW
@@ -130,7 +130,7 @@ CONSUME
 
 ## Implementation note
 
-Reuse the existing `StockService` / `IStockApiClient` shape — no new layers (project convention). Data access stays in the existing revenue/cost/risk repositories; the proof rides along on the row, so no extra repository is involved. Every write goes through `IContributionWriter.UpsertRow`, which applies the reviewer gate and the "don't clobber the citation when a write omits it" rule.
+Use `IStockApiClient` only to retrieve filing metadata and primary filing documents. Data access stays in the existing revenue/cost/risk repositories; the proof rides along on the row, so no extra repository is involved. Every write goes through `IContributionWriter.UpsertRow`, which applies the reviewer gate and the "don't clobber the citation when a write omits it" rule.
 
 ---
 
@@ -141,6 +141,6 @@ These are known holes, not blockers — listed so they're decided deliberately, 
 1. **Stale proof.** Editing a row's values doesn't invalidate its `Evidence` — the quote can end up next to a number nobody re-checked against it. There is no staleness flag (the old per-field `ReferencedValue` column went with the review table).
 2. **Derived values.** If `Percentage` is computed from two JSON numbers, that figure isn't literally *in* the `Evidence` quote. The quote cites the passage the row came from, not each arithmetic step.
 3. **Unproved rows exist.** `Reference`/`Evidence` are nullable — a row can be saved with no citation at all, and the UI simply shows "no proof on record".
-4. **Machine-sourced data (EDGAR/Finnhub).** Those rows have provenance (the XBRL fact / API field) but no quote, so their proof cells stay empty.
+4. **Machine-sourced data.** Rows from other APIs may have provenance but no filing quote, so their proof cells can remain empty.
 5. **Name resolution.** Evidence says "TSMC"; the DB Company is "Taiwan Semiconductor". Verifying a counterparty by hand still needs the alias/Wikidata resolver from `api-model.md`.
 6. **No proof history.** Re-saving overwrites `Reference`/`Evidence` in place; nothing keeps the prior citation.

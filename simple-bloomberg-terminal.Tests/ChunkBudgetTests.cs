@@ -6,14 +6,10 @@ namespace simple_bloomberg_terminal.Tests;
 
 /// <summary>
 /// The chunk-distribution half of the scan: how many worker calls one filing costs, and whether the
-/// chunks that survive a budget are the ones carrying figures.
+/// chunks that survive a budget are the ones carrying named commercial relationships.
 ///
-/// The scan assembles its chunk list from three independent feeds (ScanAutoAsync):
-///   A. triaged bold headings for the narrative Items          — PackHeadings
-///   B. Item 8, the SEC's rendered statement tables            — BuildReports
-///   C. any narrative Item whose heading outline was too thin  — BuildSection, 40 chunks, untriaged
-/// Feed C is the one that has no relevance filter and no share of a common budget, so these tests
-/// measure it directly and then measure the three feeds together.
+/// The scan combines ranked heading chunks with full-section fallback chunks when a filing's visual
+/// heading outline is too thin. These tests keep that fallback bounded and counterparty-aware.
 /// </summary>
 public class ChunkBudgetTests
 {
@@ -23,16 +19,8 @@ public class ChunkBudgetTests
 
     // ── Synthetic filings ─────────────────────────────────────────────────────────────────────────
 
-    // A segment revenue table, shaped like the real disaggregation note: row labels naming segments,
-    // a units-bearing caption, and figures. This is the single most valuable paragraph in an MD&A for
-    // the REVENUE node, and in a real filing it sits LATE in the section.
-    private const string SegmentTable = """
-        <table>
-          <tr><th>Net sales by reportable segment - USD ($) $ in Millions</th><th>2026</th><th>2025</th></tr>
-          <tr><td>Data Center</td><td>12,580</td><td>9,361</td></tr>
-          <tr><td>Client</td><td>7,043</td><td>6,212</td></tr>
-          <tr><td>Gaming</td><td>2,588</td><td>3,774</td></tr>
-        </table>
+    private const string CounterpartyDisclosure = """
+        <p>Microsoft is a named customer and purchases cloud services from us under a commercial agreement.</p>
         """;
 
     // Boilerplate MD&A prose: no figures, no segment words. Sized just over half the chunk budget so
@@ -43,7 +31,7 @@ public class ChunkBudgetTests
 
     /// <summary>
     /// An Item 7 with no bold headings at all — the Intel shape that sends the Item down feed C.
-    /// <paramref name="tableAt"/> is the paragraph index the segment table is placed at.
+    /// <paramref name="tableAt"/> is the paragraph index where the counterparty disclosure is placed.
     /// </summary>
     private static string ThinMdna(int paragraphs, int tableAt)
     {
@@ -54,7 +42,7 @@ public class ChunkBudgetTests
         sb.Append("<p>Item 7. Management's Discussion and Analysis of Financial Condition.</p>\n");
         for (var i = 0; i < paragraphs; i++)
         {
-            if (i == tableAt) sb.Append(SegmentTable).Append('\n');
+            if (i == tableAt) sb.Append(CounterpartyDisclosure).Append('\n');
             sb.Append("<p>").Append(Boilerplate(i)).Append("</p>\n");
         }
         sb.Append("<p>Item 8. Financial Statements and Supplementary Data.</p>\n");
@@ -70,20 +58,19 @@ public class ChunkBudgetTests
     // ── Ranking: which chunks survive the cut ─────────────────────────────────────────────────────
 
     [Fact]
-    public void RankedTruncation_KeepsTheSegmentTableThatDocumentOrderDropped()
+    public void RankedTruncation_KeepsTheCounterpartyDisclosureThatDocumentOrderDropped()
     {
-        // The table sits at paragraph 50 of 60 — past a 40-chunk cut, which is where a real
-        // disaggregation note sits relative to the MD&A prose that precedes it.
+        // The disclosure sits at paragraph 50 of 60, past a simple 40-chunk document-order cut.
         var raw = ThinMdna(60, tableAt: 50);
 
         var before = FirstN(raw, "7", 40);
         var after = FilingSections.BuildSection(raw, "7", ExtractionNode.REVENUE, 40);
 
-        _out.WriteLine($"segment table kept — document order: {before.Any(c => c.Text.Contains("Data Center"))}");
-        _out.WriteLine($"segment table kept — ranked:         {after.Any(c => c.Text.Contains("Data Center"))}");
+        _out.WriteLine($"counterparty kept — document order: {before.Any(c => c.Text.Contains("Microsoft"))}");
+        _out.WriteLine($"counterparty kept — ranked:         {after.Any(c => c.Text.Contains("Microsoft"))}");
 
-        Assert.DoesNotContain(before, c => c.Text.Contains("Data Center"));
-        Assert.Contains(after, c => c.Text.Contains("Data Center"));
+        Assert.DoesNotContain(before, c => c.Text.Contains("Microsoft"));
+        Assert.Contains(after, c => c.Text.Contains("Microsoft"));
     }
 
     [Fact]
@@ -96,7 +83,7 @@ public class ChunkBudgetTests
         var after = FilingSections.BuildSection(raw, "7", ExtractionNode.REVENUE, 6);
 
         Assert.Equal(6, after.Count);
-        Assert.Contains(after, c => c.Text.Contains("Data Center"));
+        Assert.Contains(after, c => c.Text.Contains("Microsoft"));
     }
 
     [Fact]
@@ -133,7 +120,7 @@ public class ChunkBudgetTests
     [InlineData(3)]   // the worst case: every narrative Item thin, feed A contributes nothing
     public void SharedCeiling_BoundsTheWorkerCountRegardlessOfHowManyItemsAreThin(int thinItems)
     {
-        const int feedAandB = 10;   // a typical Item 8 after SelectReport, per the AMD/Apple measurements in the source
+        const int feedAandB = 10;   // representative heading and primary-filing Item 8 chunks
         var raw = ThinMdna(60, tableAt: 50);
 
         // Before: each thin Item independently took BuildSection's default 40.
@@ -156,8 +143,8 @@ public class ChunkBudgetTests
     [Fact]
     public void SharedCeiling_NeverStarvesAThinItemToNothing()
     {
-        // Item 8 alone can eat the whole ceiling on a filing with many rendered reports. A thin Item 7
-        // must still be looked at rather than dropped from the scan without trace.
+        // A busy Item 8 can consume the nominal remaining budget. A thin Item 7 must still receive
+        // the minimum scan allocation rather than disappearing without trace.
         var raw = ThinMdna(60, tableAt: 50);
         var remaining = Math.Max(0, FilingSections.MaxScanChunks - 48);
         var perItem = Math.Max(6, remaining / 1);
@@ -165,7 +152,7 @@ public class ChunkBudgetTests
         var chunks = FilingSections.BuildSection(raw, "7", ExtractionNode.REVENUE, perItem);
 
         Assert.Equal(6, chunks.Count);
-        Assert.Contains(chunks, c => c.Text.Contains("Data Center"));
+        Assert.Contains(chunks, c => c.Text.Contains("Microsoft"));
     }
 
     // ── Node awareness ────────────────────────────────────────────────────────────────────────────

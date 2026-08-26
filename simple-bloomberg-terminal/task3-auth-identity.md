@@ -196,7 +196,7 @@ All ten follow the same pattern: class-level `[Authorize(Roles = "Admin,Manager"
 
 | Controller | All Actions | Notes |
 |---|---|---|
-| **ExtractionController** | Index, References, Reference, Save, SaveBatch, Review, AutoExtract, ScanAuto, ScanAutoAsync, ScanJobs, DismissScanJob, ScanJobReply, ScanJobReplyState, Chat, DiscoverRelated, LinkCounterparty | Every action requires Admin or Manager role; no anonymous reads |
+| **ExtractionController** | Index, References, Reference, Save, SaveBatch, Review, AutoExtract, ScanAuto, RunFastWorkerScanAsync, ScanJobs, DismissScanJob, ScanJobReply, ScanJobReplyState, Chat, DiscoverRelated, LinkCounterparty | Every action requires Admin or Manager role; no anonymous reads |
 
 ### 4.7 Authorization Summary Matrix
 

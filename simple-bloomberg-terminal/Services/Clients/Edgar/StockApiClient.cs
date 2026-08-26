@@ -22,16 +22,6 @@ public class StockApiClient : IStockApiClient
         _logger = logger;
     }
 
-    public async Task<EdgarCompanyFacts?> GetCompanyFacts(string cik10)
-    {
-        var resp = await _http.GetAsync($"/api/xbrl/companyfacts/CIK{cik10}.json");
-        if (resp.StatusCode == HttpStatusCode.NotFound) return null;
-        if (!resp.IsSuccessStatusCode)
-            _logger.LogWarning("EDGAR companyfacts {Cik} failed: {Status}", cik10, (int)resp.StatusCode);
-        resp.EnsureSuccessStatusCode();
-        return await resp.Content.ReadFromJsonAsync<EdgarCompanyFacts>();
-    }
-
     public async Task<EdgarSubmissions?> GetSubmissions(string cik10)
     {
         var resp = await _http.GetAsync($"/submissions/CIK{cik10}.json");
@@ -64,16 +54,6 @@ public class StockApiClient : IStockApiClient
     {
         var map = await _http.GetFromJsonAsync<Dictionary<string, EdgarTicker>>(TickerMapUrl);
         return map?.Values.ToList() ?? [];
-    }
-
-    public async Task<string?> GetCompanyFactsJson(string cik10)
-    {
-        var resp = await _http.GetAsync($"/api/xbrl/companyfacts/CIK{cik10}.json");
-        if (resp.StatusCode == HttpStatusCode.NotFound) return null;
-        if (!resp.IsSuccessStatusCode)
-            _logger.LogWarning("EDGAR companyfacts JSON {Cik} failed: {Status}", cik10, (int)resp.StatusCode);
-        resp.EnsureSuccessStatusCode();
-        return await resp.Content.ReadAsStringAsync();
     }
 
     public async Task<string?> GetFilingDocument(string cik, string accessionNoDashes, string primaryDocument)

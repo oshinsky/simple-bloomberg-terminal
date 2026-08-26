@@ -4210,7 +4210,7 @@ can we actually make symbols like AAPL for comapnies. Will we be able to use the
 
 ## Claude  _2026-05-21T13:00:21.319Z_
 
-SEC EDGAR API need CIK. Endpoints like `data.sec.gov/submissions/CIK{10-digit}.json` and `data.sec.gov/api/xbrl/companyfacts/CIK{10-digit}.json` — CIK only, no ticker accepted.
+SEC EDGAR filing APIs need CIK. Endpoints such as `data.sec.gov/submissions/CIK{10-digit}.json` accept CIK rather than ticker.
 
 Ticker usable via lookup: SEC publishes `https://www.sec.gov/files/company_tickers.json` (ticker→CIK map). So flow = user input ticker → resolve CIK → call API. Two-step.
 
@@ -4232,7 +4232,7 @@ Script ready: `Scripts/populate-missing-cik-asof.sql`.
 
 `★ Insight ─────────────────────────────────────`
 - SEC EDGAR designed around CIK as primary key. Ticker is convenience layer over a separate JSON file — not part of the data API itself. So your DB schema (`Cik` on Company) matches API contract directly. No translation layer needed.
-- 6 of 20 companies in seed are not SEC filers — any SEC-based feature (filings list, XBRL financials) silently fails for them. Plan UI fallback now ("no SEC data available") rather than after first bug report.
+- 6 of 20 companies in seed are not SEC filers, so filing-list features need a clear "no SEC data available" fallback.
 - Saved SEC API endpoints to memory for next session.
   `─────────────────────────────────────────────────`
 

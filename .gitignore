@@ -19,6 +19,14 @@ appsettings.Development.json
 # NuGet
 *.nupkg
 packages/
+!packages/
+packages/*
+!packages/FilingExtraction.Core/
+!packages/FilingExtraction.Core/**
+!packages/CounterpartyExtraction.Harness/
+!packages/CounterpartyExtraction.Harness/**
+packages/**/bin/
+packages/**/obj/
 
 # OS
 .DS_Store

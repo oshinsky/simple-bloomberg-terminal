@@ -30,7 +30,7 @@ public class ExtractionController : Controller
     private readonly ICompanyRiskRepository _risks;
     private readonly ICompanyRepository _companies;
     private readonly IFilingRepository _filings;
-    private readonly IFilingExtractionService _extractor;
+    private readonly IFastWorkerScanService _fastWorkerScan;
     private readonly ICounterpartyDiscovery _discovery;
     private readonly IContributionWriter _writer;
     private readonly ICompanyProvisioningService _provisioning;
@@ -38,7 +38,7 @@ public class ExtractionController : Controller
     private readonly RediscoverJobStore _rediscoverJobs;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IUserApiKeyProvider _keys;
-    private readonly LedgerMeasurementService _measure;
+    private readonly CounterpartyMeasurementService _measure;
     private readonly MeasureJobStore _measureJobs;
 
     public ExtractionController(
@@ -47,7 +47,7 @@ public class ExtractionController : Controller
         ICompanyRiskRepository risks,
         ICompanyRepository companies,
         IFilingRepository filings,
-        IFilingExtractionService extractor,
+        IFastWorkerScanService fastWorkerScan,
         ICounterpartyDiscovery discovery,
         IContributionWriter writer,
         ICompanyProvisioningService provisioning,
@@ -55,7 +55,7 @@ public class ExtractionController : Controller
         RediscoverJobStore rediscoverJobs,
         IServiceScopeFactory scopeFactory,
         IUserApiKeyProvider keys,
-        LedgerMeasurementService measure,
+        CounterpartyMeasurementService measure,
         MeasureJobStore measureJobs)
     {
         _revenue = revenue;
@@ -63,7 +63,7 @@ public class ExtractionController : Controller
         _risks = risks;
         _companies = companies;
         _filings = filings;
-        _extractor = extractor;
+        _fastWorkerScan = fastWorkerScan;
         _discovery = discovery;
         _writer = writer;
         _provisioning = provisioning;
@@ -178,8 +178,7 @@ public class ExtractionController : Controller
         if (string.IsNullOrWhiteSpace(req.Evidence)) return BadRequest("Select proof text first.");
         var node = ParseNode(req.Node);
 
-        // Proof filing: upsert by accession when the proof came from a filing document; null from
-        // Company Facts (the row then carries the quote without a filing link).
+        // Proof filing: upsert by accession when the proof came from a filing document.
         var filingId = ResolveFilingId(req.CompanyId, req.FilingAccessionNumber, req.FilingForm, req.FilingDate, req.FilingUrl);
 
         var rowId = _writer.UpsertRow(node, req.CompanyId, req.RevenueSourceId, req.SourceType,
@@ -344,7 +343,7 @@ public class ExtractionController : Controller
             using var scope = _scopeFactory.CreateScope();
             var sp = scope.ServiceProvider;
             sp.GetRequiredService<IUserApiKeyProvider>().Set(keys);
-            var measure = sp.GetRequiredService<LedgerMeasurementService>();
+            var measure = sp.GetRequiredService<CounterpartyMeasurementService>();
             var companies = sp.GetRequiredService<ICompanyRepository>();
 
             try
@@ -364,7 +363,7 @@ public class ExtractionController : Controller
                     catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or InvalidOperationException)
                     {
                         lock (job.Lock)
-                            job.Results.Add(new FilingMeasurement(
+                            job.Results.Add(new CounterpartyMeasurementResult(
                                 label, "", t.Accession, runs,
                                 0, 0, 0, 0, 0, 0, 0, 0, 0, "", DateTime.UtcNow, [], [], ex.Message));
                     }
@@ -401,7 +400,7 @@ public class ExtractionController : Controller
                     .OrderBy(r => r.Filing).ThenBy(r => r.Run)
                     .Select(r => new
                     {
-                        r.Filing, r.Run, r.Phase, r.WorkerItems, r.Errors, r.LeadItems,
+                        r.Filing, r.Run, r.Phase, r.FastWorkerClaims, r.Errors, r.LeadAgentClaims,
                         chunksTotal = r.Chunks.Count,
                         chunksDone = r.Chunks.Count(c => c.Status is "Done" or "Error"),
                         chunks = r.Chunks.Select(c => new
@@ -440,7 +439,8 @@ public class ExtractionController : Controller
             return BadRequest("accession and doc are required.");
         try
         {
-            var suggestions = await _extractor.ExtractAsync(companyId, accession, doc, ParseNode(node), form);
+            var suggestions = await _fastWorkerScan.ScanFullSectionsAsync(
+                companyId, accession, doc, ParseNode(node), form);
             return Json(suggestions);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
@@ -450,7 +450,7 @@ public class ExtractionController : Controller
     }
 
     // Mode B (auto) — triage every bold heading by title, scan the AI-chosen ones in parallel, and
-    // stash the result as the chat's grounding. Replaces the hand-pick flow. Returns scanned + found.
+    // store the fast-worker digest for the lead agent. Replaces the hand-pick flow. Returns scanned + found.
     [HttpPost, Route("scan-auto/{companyId:long}")]
     public async Task<IActionResult> ScanAuto(
         long companyId, [FromQuery] string accession, [FromQuery] string doc, [FromQuery] string? node, [FromQuery] string? form)
@@ -460,9 +460,10 @@ public class ExtractionController : Controller
             return BadRequest("accession and doc are required.");
         try
         {
-            var result = await _extractor.ScanAutoAsync(companyId, accession, doc, ParseNode(node), form);
+            var result = await _fastWorkerScan.RunFastWorkerScanAsync(
+                companyId, accession, doc, ParseNode(node), form);
             // Project without Digest: it is for in-process callers (the measurement harness), and the
-            // browser has no use for a multi-KB grounding blob on every scan.
+            // browser has no use for a multi-KB fast-worker digest on every scan.
             return Json(new { result.Scanned, result.Found, result.Headings });
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
@@ -476,7 +477,7 @@ public class ExtractionController : Controller
     // away; the notification widget polls scan-jobs for the result. The background task opens its
     // OWN DI scope — the request scope (and its DbContext) is gone the moment this returns.
     [HttpPost, Route("scan-auto-async/{companyId:long}")]
-    public async Task<IActionResult> ScanAutoAsync(
+    public async Task<IActionResult> RunFastWorkerScanAsync(
         long companyId, [FromQuery] string accession, [FromQuery] string doc,
         [FromQuery] string? node, [FromQuery] string? form,
         [FromQuery] string? companyName, [FromQuery] string? filingLabel)
@@ -504,7 +505,7 @@ public class ExtractionController : Controller
         // Prefill the section boxes from the node's known SEC Items so the widget shows the layout
         // immediately (spinning) while triage/fetch run. The Planned event replaces these with the
         // real per-Item chunk rows once the scan has decided what to read.
-        foreach (var item in FilingSections.ItemsFor(parsedNode, form))
+        foreach (var item in FilingSections.ItemsFor(parsedNode))
             job.Sections.Add(new ScanSection { Item = $"Item {item}" });
         _jobs.Add(job);
 
@@ -512,18 +513,15 @@ public class ExtractionController : Controller
         {
             using var scope = _scopeFactory.CreateScope();
             scope.ServiceProvider.GetRequiredService<IUserApiKeyProvider>().Set(keys);
-            var extractor = scope.ServiceProvider.GetRequiredService<IFilingExtractionService>();
+            var fastWorkerScan = scope.ServiceProvider.GetRequiredService<IFastWorkerScanService>();
             var chat = scope.ServiceProvider.GetRequiredService<IExtractionChatService>();
             try
             {
                 // Coarse phase text for the pre-triage window; once chunks are planned the widget shows
                 // the live section tree instead (filled by the progress callback below).
                 job.Progress = $"Reading the {job.FilingLabel} & triaging sections with parallel agents…";
-                job.Report = await extractor.ScanAutoAsync(
+                job.Report = await fastWorkerScan.RunFastWorkerScanAsync(
                     companyId, accession, doc, parsedNode, form, p => ApplyScanProgress(job, p));
-                // The audited tagged XBRL facts (COST/REVENUE; null for RISK) for the widget's table —
-                // also primes the cache the summary turn below grounds on, so it's one SEC round-trip.
-                job.Xbrl = await chat.GetXbrlViewAsync(companyId, accession, parsedNode);
                 // Auto AI summary: one chat turn grounded on the digest the scan just cached, so the
                 // notification opens with a real answer rather than just counts.
                 job.Progress = $"Found {job.Report.Found} candidate(s) · writing summary…";
@@ -565,8 +563,7 @@ public class ExtractionController : Controller
 
     // Cross-segment hand-off (worker-less). The SOURCE segment's agent already FOUND the fact and
     // emitted a ```handoff``` block; this spins up the TARGET segment's agent to re-dress it in that
-    // segment's save schema — NO worker re-scan (scanIfMissing:false grounds on whatever's cached + the
-    // seed + the cheap XBRL view). It runs one turn whose first user message IS the seed, so the target
+    // segment's save schema — NO worker re-scan. It runs one turn whose first user message IS the seed, so the target
     // widget opens with a proposed ```save``` block ready to tick + Save. See docs/extraction/cross-extraction.md.
     [HttpPost, Route("scan-handoff/{companyId:long}")]
     public async Task<IActionResult> ScanHandoff(
@@ -606,9 +603,8 @@ public class ExtractionController : Controller
             var chat = scope.ServiceProvider.GetRequiredService<IExtractionChatService>();
             try
             {
-                // No ScanAutoAsync — the source agent already found this; we only re-dress it in this
-                // segment's schema. The XBRL view is a cheap cached read (audited figures if tagged).
-                job.Xbrl = await chat.GetXbrlViewAsync(companyId, accession, parsedNode);
+                // No worker scan — the source agent already found this; we only re-dress it in this
+                // segment's schema.
                 job.Progress = "Recording the handed-over item…";
                 job.Replying = true;
                 job.ReplyBuffer = "";
@@ -660,13 +656,13 @@ public class ExtractionController : Controller
         return Json(list);
     }
 
-    // Fold one scan progress event into the job's live section tree. Called from concurrent worker
+    // Fold one scan progress event into the job's live section tree. Called from concurrent fast-worker
     // threads, so all mutation is under the job's lock; ScanDto snapshots under the same lock.
-    private static void ApplyScanProgress(ScanJob job, ScanProgress p)
+    private static void ApplyScanProgress(ScanJob job, FastWorkerScanProgress p)
     {
         lock (job.SectionsLock)
         {
-            if (p.Phase == ScanChunkPhase.Planned)
+            if (p.Phase == FastWorkerChunkPhase.Planned)
             {
                 job.Sections.Clear();
                 job.ChunkList.Clear();
@@ -683,7 +679,7 @@ public class ExtractionController : Controller
             {
                 var state = job.ChunkList[p.Index];
                 state.Status = p.Phase.ToString();
-                if (p.Phase == ScanChunkPhase.Done) state.Found = p.Found;
+                if (p.Phase == FastWorkerChunkPhase.Done) state.Found = p.Found;
                 // Stash the verbatim prompt + reply for the widget's per-chunk inspector (Done/Error only).
                 if (p.Prompt != null) state.Prompt = p.Prompt;
                 if (p.Response != null) state.Response = p.Response;
@@ -726,22 +722,10 @@ public class ExtractionController : Controller
             filingLabel = j.FilingLabel,
             found = j.Report?.Found ?? 0,
             sections,
-            xbrl = XbrlDto(j.Xbrl),
             summary = j.Summary,
             error = j.Error
         };
     }
-
-    // Project the structured XBRL view into the camelCase shape the widget's xbrlBox() reads. Null when
-    // the node is RISK or the filing tagged nothing — the widget then renders no XBRL box.
-    private static object? XbrlDto(XbrlView? x) => x is null ? null : new
-    {
-        node = x.Node,
-        periodEnd = x.PeriodEnd,
-        totals = x.Totals.Select(t => new { label = t.Label, value = t.Value }).ToArray(),
-        segments = x.Segments.Select(s => new { segment = s.Segment, value = s.Value, detail = s.Detail, reconciles = s.Reconciles }).ToArray(),
-        sumCheck = x.SumCheck is { } c ? new { segmentSum = c.SegmentSum, total = c.Total, ties = c.Ties } : null
-    };
 
     // Project a re-discovery job into the same shape the widget consumes, with the chat-only fields
     // blanked. filingLabel/node fill the widget's title slots with a sensible label.
@@ -796,7 +780,7 @@ public class ExtractionController : Controller
 
     // Start a detached follow-up chat reply for a finished scan: generate on a background task so
     // the answer survives the user navigating away. The widget POSTs the conversation so far, then
-    // polls scan-jobs/{id}/reply for the streamed result. Reuses the existing chat grounding.
+    // polls scan-jobs/{id}/reply for the streamed result. Reuses the existing lead-agent context.
     [HttpPost, Route("scan-jobs/{jobId}/reply")]
     public async Task<IActionResult> ScanJobReply(string jobId, [FromBody] ScanJobReplyRequest req)
     {
@@ -952,8 +936,8 @@ public class ExtractionController : Controller
         return Json(new { sourceId = rowId.Value, counterpartyId, node = node.ToString() });
     }
 
-    // Upsert the proof filing by accession (globally unique) and return its id. Returns null when
-    // no filing was open (proof came from Company Facts) so the caller leaves the link untouched.
+    // Upsert the proof filing by accession (globally unique) and return its id. Returns null when no
+    // filing metadata was supplied, so the caller leaves the link untouched.
     private long? ResolveFilingId(long companyId, string? accession, string? form, string? date, string? url)
     {
         if (string.IsNullOrWhiteSpace(accession)) return null;

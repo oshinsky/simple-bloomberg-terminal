@@ -51,12 +51,10 @@
     // (td, tr, p, div, br…) DOES break: "Products" and "$294,866" in adjacent cells must read as two
     // words, or a table-row quote — the most common shape of a revenue quote — can never match.
     const INLINE = new Set(['SPAN', 'A', 'B', 'I', 'EM', 'STRONG', 'U', 'FONT', 'SUP', 'SUB',
-        'SMALL', 'LABEL', 'CODE', 'MARK', 'IX:NONNUMERIC', 'IX:NONFRACTION']);
+        'SMALL', 'LABEL', 'CODE', 'MARK']);
 
-    // Inline-XBRL metadata blocks and anything explicitly hidden: real text in the markup that the
-    // reader never sees. Indexing it would let a match scroll to an invisible node.
-    const HIDDEN_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'HEAD',
-        'IX:HEADER', 'IX:HIDDEN', 'IX:REFERENCES', 'IX:RESOURCES']);
+    // Metadata blocks and explicitly hidden content are excluded from the visible-text index.
+    const HIDDEN_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'HEAD']);
     const isHidden = el =>
         HIDDEN_TAGS.has(el.tagName) || el.hidden ||
         /display\s*:\s*none/i.test(el.getAttribute('style') || '');

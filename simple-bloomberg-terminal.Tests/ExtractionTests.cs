@@ -2,13 +2,13 @@ using System.Net;
 using System.Net.Http.Json;
 using Microsoft.Extensions.DependencyInjection;
 using simple_bloomberg_terminal.Data;
-using simple_bloomberg_terminal.Dtos;
+using simple_bloomberg_terminal.Models.Entities;
 using simple_bloomberg_terminal.Models.Enums;
 
 namespace simple_bloomberg_terminal.Tests;
 
 /// <summary>
-/// Phase-1 extraction flow: refresh Apple's EDGAR rows, then freeze proof onto the revenue row.
+/// Extraction flow: create a revenue row, then freeze proof onto that row.
 /// Proof is one pair per row — Reference (where in the document) + Evidence (the verbatim passage) —
 /// stored on the row itself along with the filing it came from.
 /// </summary>
@@ -18,12 +18,15 @@ public class ExtractionTests : ApiTestBase
 
     private record RefResult(long RevenueSourceId);
 
-    private async Task<long> RefreshAppleAndGetRevenueRowId()
+    private Task<long> RefreshAppleAndGetRevenueRowId()
     {
-        var resp = await Client.PostAsync($"/api/stock/refresh/{AppleId}", null);
-        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
-        var dto = await resp.Content.ReadFromJsonAsync<CompanyDto>();
-        return dto!.RevenueSources.Single(r => r.DataSource == DataSource.EDGAR).Id;
+        using var scope = Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var row = new RevenueSource(SourceType.SEGMENT, $"Revenue test {Guid.NewGuid():N}", AppleId)
+            { DataSource = DataSource.MANUAL };
+        db.RevenueSources.Add(row);
+        db.SaveChanges();
+        return Task.FromResult(row.Id);
     }
 
     [Fact]
@@ -51,7 +54,7 @@ public class ExtractionTests : ApiTestBase
 
         Assert.Equal("Item 7. Management's Discussion", row.Reference);
         Assert.Equal("\"val\": 383000000000", row.Evidence);
-        Assert.Null(row.FilingId);   // no filing was open — proof came from Company Facts
+        Assert.Null(row.FilingId);   // no filing metadata was supplied
     }
 
     [Fact]

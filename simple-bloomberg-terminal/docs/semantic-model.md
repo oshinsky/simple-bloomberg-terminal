@@ -169,7 +169,7 @@ Weekly trading-volume time series per Company, backfilled from Yahoo Finance's c
 | Percentage | double? | |
 | Reference | string? | WHERE in the document the row came from: the SEC Item / note / subheading (e.g. "Item 7. Management's Discussion"), set by the extraction agent. Nullable `longtext` (migration `20260616113409_AddRevenueAndRiskReference`) |
 | Evidence | string? | The exact verbatim substring from the filing backing the row — findable by a literal search in the document. One quote per row. Nullable `longtext` (migration `20260814074704_CollapseProofOntoSourceRows`) |
-| FilingId | long? | FK → Filings (Restrict, indexed); the filing Reference/Evidence were taken from (null when they came from Company Facts or a web source). Nav: `Filing`. Migration `20260814074704_CollapseProofOntoSourceRows` |
+| FilingId | long? | FK → Filings (Restrict, indexed); the filing Reference/Evidence were taken from, null for non-filing evidence. Nav: `Filing`. Migration `20260814074704_CollapseProofOntoSourceRows` |
 | DataSource | DataSource? | EDGAR, MANUAL, CLAUDE_ESTIMATED… |
 | DeletedAt | DateTime? | Soft-delete timestamp |
 | Status | ContributionStatus | Review state; defaults to Approved (live). User contributions are Pending until a Manager rules on them |
@@ -188,7 +188,7 @@ Weekly trading-volume time series per Company, backfilled from Yahoo Finance's c
 | Percentage | double? | |
 | Reference | string? | WHERE in the document the row came from: the SEC Item / note / subheading, set by the extraction agent. Nullable `longtext` (migration `20260616080209_AddCostSourceReference`) |
 | Evidence | string? | The exact verbatim substring from the filing backing the row — findable by a literal search in the document. One quote per row. Nullable `longtext` (migration `20260814074704_CollapseProofOntoSourceRows`) |
-| FilingId | long? | FK → Filings (Restrict, indexed); the filing Reference/Evidence were taken from (null when they came from Company Facts or a web source). Nav: `Filing`. Migration `20260814074704_CollapseProofOntoSourceRows` |
+| FilingId | long? | FK → Filings (Restrict, indexed); the filing Reference/Evidence were taken from, null for non-filing evidence. Nav: `Filing`. Migration `20260814074704_CollapseProofOntoSourceRows` |
 | DataSource | DataSource? | |
 | DeletedAt | DateTime? | Soft-delete timestamp |
 | Status | ContributionStatus | Review state; defaults to Approved (live). User contributions are Pending until a Manager rules on them |
@@ -205,7 +205,7 @@ Weekly trading-volume time series per Company, backfilled from Yahoo Finance's c
 | Note | string? | Free-text detail |
 | Reference | string? | WHERE in the document the row came from: the SEC Item / note / subheading (e.g. "Item 1A. Risk Factors"), set by the extraction agent. Nullable `longtext` (migration `20260616113409_AddRevenueAndRiskReference`) |
 | Evidence | string? | The exact verbatim substring from the filing backing the row — findable by a literal search in the document. One quote per row. Nullable `longtext` (migration `20260814074704_CollapseProofOntoSourceRows`) |
-| FilingId | long? | FK → Filings (Restrict, indexed); the filing Reference/Evidence were taken from (null when they came from Company Facts or a web source). Nav: `Filing`. Migration `20260814074704_CollapseProofOntoSourceRows` |
+| FilingId | long? | FK → Filings (Restrict, indexed); the filing Reference/Evidence were taken from, null for non-filing evidence. Nav: `Filing`. Migration `20260814074704_CollapseProofOntoSourceRows` |
 | DataSource | DataSource? | |
 | DeletedAt | DateTime? | Soft-delete timestamp |
 | Status | ContributionStatus | Review state; defaults to Approved (live). User contributions are Pending until a Manager rules on them |

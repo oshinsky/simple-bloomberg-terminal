@@ -75,7 +75,7 @@ public class FilingsController : ControllerBase
                                 "for this accession number.");
         }
 
-        var key = FilingExtractionService.RawKey(filing.AccessionNumber, doc);
+        var key = FastWorkerScanService.RawKey(filing.AccessionNumber, doc);
         if (_cache.TryGetValue(key, out string? cached) && cached is not null)
             return Content(cached, "text/plain");
 

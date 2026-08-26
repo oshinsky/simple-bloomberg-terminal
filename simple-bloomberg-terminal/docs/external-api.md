@@ -98,9 +98,9 @@ Existing implemented source: **SEC EDGAR** (see `reference_sec_edgar_api.md`). E
 
 ---
 
-## Implementation pattern (reuse EDGAR's shape)
+## Implementation pattern
 
-Follow the existing `StockService` + `IStockApiClient` split for every new source — do not invent new layers (per project conventions):
+Keep HTTP transport separate from mapping and persistence:
 
 - **Client** (`I{X}ApiClient` / `{X}ApiClient`): HTTP + deserialize only. Register with `AddHttpClient<>`. Set a `User-Agent`/key header where required.
 - **Service logic**: map foreign payload → entities, persist via existing repos, fall back on failure. Reuse `IRevenueSourceRepository`/`ICostSourceRepository` clear-by-`DataSource` methods.

@@ -99,9 +99,9 @@ A company's Wikipedia "customers"/"suppliers"/"partners" prose is a cheap, broad
 
 ---
 
-## Concrete pipeline (reuse the EDGAR `StockService` shape)
+## Concrete filing-text pipeline
 
-Per project conventions — no new layers, mirror EDGAR's client/service/repo split and idempotency.
+Per project conventions, add no layer without a demonstrated responsibility.
 
 1. **Discovery** — `IFullTextSearchClient` over `efts.sec.gov`: for company X, search its 10-K for each known peer name (or pull the full Business/MD&A section once).
 2. **Fetch** — get the filing document text (existing EDGAR client + Archives path); slice the relevant sections.

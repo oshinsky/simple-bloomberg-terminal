@@ -29,8 +29,7 @@ public class RevenueSource : IContribution
     // produced one).
     public string? Evidence { get; set; }
 
-    // The filing the Reference/Evidence were taken from (null when they came from Company Facts or
-    // a web source rather than a filing document).
+    // The filing the Reference/Evidence were taken from; null for non-filing evidence.
     public long? FilingId { get; set; }
 
     public DataSource? DataSource { get; set; }

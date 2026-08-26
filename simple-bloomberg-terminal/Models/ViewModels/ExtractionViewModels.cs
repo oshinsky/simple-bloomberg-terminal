@@ -51,8 +51,8 @@ public class ReferenceRequest
     public string? Reference { get; set; }
     public string? Evidence { get; set; }
 
-    // The filing the proof came from (sent only when a filing document is open in the right
-    // pane — null when the proof was taken from Company Facts). Used to upsert a Filing and link
+    // The filing the proof came from (sent only when a filing document is open in the right pane).
+    // Used to upsert a Filing and link
     // it to the source row, so the source connects to its proof filing on the graph.
     public string? FilingAccessionNumber { get; set; }
     public string? FilingForm { get; set; }
@@ -75,12 +75,13 @@ public record ExtractionSuggestion(
 /// <summary>Outcome of an auto-scan: how many headings the triage model chose to read in full, how
 /// many candidate rows the workers pulled from them, and every heading it was offered with whether it
 /// was picked — so the page can show the user what was triaged and what the AI selected.</summary>
-/// <param name="Digest">The grounding text this scan produced, returned as well as cached. The
+/// <param name="FastWorkerDigest">The fast-worker digest this scan produced, returned as well as cached. The
 /// measurement harness needs it in hand: it runs N scans of one filing concurrently, and they all
 /// share the one <c>filing-findings</c> cache key, so reading the digest back from the cache would
 /// hand a run whichever scan finished last.</param>
-public record AutoScanResult(
-    int Scanned, int Found, IReadOnlyList<ScannedHeading> Headings, string Digest = "");
+public record FastWorkerScanResult(
+    int Scanned, int Found, IReadOnlyList<ScannedHeading> Headings, string FastWorkerDigest = "",
+    IReadOnlyList<ExtractionChunkArtifact>? Corpus = null);
 
 /// <summary>One heading the triage model saw, plus whether it chose to scan it.</summary>
 public record ScannedHeading(string Section, string Title, bool Picked);
@@ -101,8 +102,7 @@ public class SaveRequest
     public string? Note { get; set; }            // RISK node only (free-text)
     public long? RelatedCompanyId { get; set; }
 
-    // The row's proof: WHERE in the document, the verbatim quote, and the open filing they came from
-    // (filing fields null when the text was taken from Company Facts).
+    // The row's proof: WHERE in the document, the verbatim quote, and the open filing they came from.
     public string? Reference { get; set; }
     public string? Evidence { get; set; }
     public string? FilingAccessionNumber { get; set; }
@@ -223,35 +223,12 @@ public class LinkCounterpartyRequest
     public double? Value { get; set; }             // estimated contract value (USD) from valued discovery; stored on the row
 }
 
-/// <summary>
-/// The audited XBRL tagged facts extracted for one filing+node, surfaced to the UI as structured data
-/// (the same figures the chat grounding text is built from). Built by
-/// <c>IExtractionChatService.GetXbrlViewAsync</c> for the numeric nodes (COST, REVENUE); null for RISK,
-/// or when the filing tags nothing. <see cref="SumCheck"/> is the Σ-segment-revenue-vs-total tie test
-/// (null when not computable).
-/// </summary>
-public record XbrlView(
-    string Node, string? PeriodEnd,
-    IReadOnlyList<XbrlFactLine> Totals,
-    IReadOnlyList<XbrlSegmentLine> Segments,
-    XbrlSumCheck? SumCheck);
 
-/// <summary>One company-total tagged fact (e.g. "Total revenue", "Cost of revenue") in USD.</summary>
-public record XbrlFactLine(string Label, double? Value);
-
-/// <summary>One business segment's figure: the cost or revenue (<see cref="Value"/>), an optional
-/// <see cref="Detail"/> line (cost shows "revenue − operating income"), and <see cref="Reconciles"/>
-/// (the 0 ≤ cost ≤ revenue sanity flag; always true for revenue, which needs no subtraction).</summary>
-public record XbrlSegmentLine(string Segment, double Value, string? Detail, bool Reconciles);
-
-/// <summary>The Σ-segment-revenue vs company-total-revenue check.</summary>
-public record XbrlSumCheck(double SegmentSum, double Total, bool Ties);
-
-/// <summary>One visible chat turn (the grounding/system context is added server-side, not here).</summary>
+/// <summary>One visible chat turn (the lead-agent context is added server-side, not here).</summary>
 public record ChatMessage(string Role, string Content);
 
 /// <summary>A detached follow-up reply for a scan job: the visible turns so far (the filing
-/// grounding is resolved server-side from the job). Generated on a background task so it survives
+/// lead-agent context is resolved server-side from the job). Generated on a background task so it survives
 /// the user navigating away; the widget polls for the result.</summary>
 public class ScanJobReplyRequest
 {
@@ -283,6 +260,6 @@ public class MeasureViewModel
     public string? Targets { get; set; }
     public int Runs { get; set; } = 10;
     public bool StrictCounterparties { get; set; }
-    public IReadOnlyList<Services.Extraction.FilingMeasurement> Results { get; set; } = [];
+    public IReadOnlyList<CounterpartyMeasurementResult> Results { get; set; } = [];
     public string? RowsJson { get; set; }
 }

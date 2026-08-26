@@ -120,7 +120,10 @@
         setTimeout(() => poll(jobId), 1000);
     }
 
-    const PHASE = { queued: 'queued', scanning: 'fast workers', lead: 'lead agent', done: 'done' };
+    const PHASE = {
+        queued: 'queued', scanning: 'fast worker agents',
+        'lead-agent': 'lead agent', done: 'done'
+    };
 
     function render(job) {
         statusEl.textContent = `${elapsed()} elapsed · ${job.runs.length} run(s) reporting`;
@@ -137,9 +140,9 @@
                   <strong>${esc(r.filing)} · run ${r.run}</strong>
                   <span class="tag-cell">${esc(PHASE[r.phase] || r.phase)}</span>
                   <span class="muted-cell">${r.chunksDone}/${r.chunksTotal} chunks (${pct}%)</span>
-                  <span class="muted-cell">fast: ${r.workerItems} items</span>
+                  <span class="muted-cell">fast worker: ${r.fastWorkerClaims} claims</span>
                   ${r.errors ? `<span class="impact-badge impact-high">${r.errors} errors</span>` : ''}
-                  <span class="muted-cell">strong: ${r.phase === 'done' ? r.leadItems + ' items' : '…'}</span>
+                  <span class="muted-cell">lead agent: ${r.phase === 'done' ? r.leadAgentClaims + ' claims' : '…'}</span>
                 </div>
                 <details style="margin-top:.4rem;">
                   <summary class="muted-cell" style="cursor:pointer;">chunk detail (${active.length})</summary>
@@ -159,6 +162,30 @@
     }
 })();
 </script>
+
+<style>
+    .measure-summary { display:grid;grid-template-columns:repeat(auto-fit,minmax(9rem,1fr));gap:.65rem;margin:1rem 0; }
+    .measure-summary-card { padding:.7rem .85rem;border:1px solid var(--border-subtle);background:var(--bg-surface); }
+    .measure-summary-value { display:block;font-family:var(--font-mono);font-size:1.25rem;color:var(--text-primary); }
+    .measure-tabs { display:flex;gap:.4rem;flex-wrap:wrap;margin:.8rem 0; }
+    .measure-tab { border:1px solid var(--border-subtle);background:transparent;color:var(--text-secondary);padding:.4rem .7rem;cursor:pointer; }
+    .measure-tab.is-active { border-color:var(--accent);color:var(--accent);background:var(--border-accent); }
+    .measure-panel[hidden] { display:none; }
+    .measure-frequency { display:flex;align-items:center;gap:.55rem;white-space:nowrap; }
+    .measure-dots { letter-spacing:.12rem;color:var(--accent);font-size:.9rem; }
+    .measure-dots .off { color:var(--border-subtle); }
+    .measure-status { display:inline-flex;padding:.15rem .4rem;border:1px solid currentColor;font-size:.72rem;text-transform:uppercase;letter-spacing:.04em; }
+    .measure-status.stable { color:var(--green); }
+    .measure-status.warning { color:var(--accent); }
+    .measure-status.problem { color:var(--red); }
+    .measure-counterparty-detail summary { cursor:pointer;list-style:none; }
+    .measure-counterparty-detail summary::-webkit-details-marker { display:none; }
+    .measure-aliases { margin-top:.25rem;font-size:.78rem;color:var(--text-muted); }
+    .measure-detail-grid { display:grid;grid-template-columns:repeat(auto-fit,minmax(14rem,1fr));gap:.75rem;padding:.75rem;background:var(--bg-surface); }
+    @@media (max-width: 760px) {
+        .measure-comparison { min-width:48rem; }
+    }
+</style>
 
 @if (Model.Results.Count > 0)
 {
@@ -188,8 +215,8 @@
                         </colgroup>
                         <thead>
                         <tr>
-                            <th>Run</th><th>Chunks</th><th>Fast items</th><th>Fast evidence %</th>
-                            <th>Lead items</th><th>Lead evidence %</th><th>Errors</th>
+                            <th>Run</th><th>Chunks</th><th>Fast-worker claims</th><th>Fast-worker evidence %</th>
+                            <th>Lead-agent claims</th><th>Lead-agent evidence %</th><th>Errors</th>
                         </tr>
                         </thead>
                         <tbody>
@@ -198,10 +225,10 @@
                             <tr>
                                 <td class="code-cell">@d.Run</td>
                                 <td class="num-cell">@d.Chunks</td>
-                                <td class="num-cell">@d.WorkerItems</td>
-                                <td class="num-cell">@d.WorkerEvidencePct</td>
-                                <td class="num-cell">@d.LeadItems</td>
-                                <td class="num-cell">@d.LeadEvidencePct</td>
+                                <td class="num-cell">@d.FastWorkerClaims</td>
+                                <td class="num-cell">@d.FastWorkerEvidencePct</td>
+                                <td class="num-cell">@d.LeadAgentClaims</td>
+                                <td class="num-cell">@d.LeadAgentEvidencePct</td>
                                 <td class="num-cell">
                                     @if (d.Errors > 0)
                                     {
@@ -228,10 +255,10 @@
                         <tr class="row-live">
                             <td class="code-cell"><strong>mean</strong></td>
                             <td class="num-cell">@r.MeanChunks</td>
-                            <td class="num-cell">@r.MeanWorkerItems</td>
-                            <td class="num-cell">@r.WorkerEvidencePct</td>
-                            <td class="num-cell">@r.MeanLeadItems</td>
-                            <td class="num-cell">@r.LeadEvidencePct</td>
+                            <td class="num-cell">@r.MeanFastWorkerClaims</td>
+                            <td class="num-cell">@r.FastWorkerEvidencePct</td>
+                            <td class="num-cell">@r.MeanLeadAgentClaims</td>
+                            <td class="num-cell">@r.LeadAgentEvidencePct</td>
                             <td class="num-cell">@r.TotalErrors</td>
                         </tr>
                         </tbody>
@@ -243,11 +270,11 @@
                 <div class="detail-metric-row" style="display:grid;grid-template-columns:repeat(3,minmax(12rem,1fr));gap:1rem;margin-top:.75rem;">
                     <div>
                         <div class="ext-field-label">Repeatability</div>
-                        <div class="num-cell">fast @r.WorkerRepeatPct% · lead @r.LeadRepeatPct%</div>
+                        <div class="num-cell">fast worker @r.FastWorkerRepeatPct% · lead agent @r.LeadAgentRepeatPct%</div>
                     </div>
                     <div>
                         <div class="ext-field-label">Evidence found</div>
-                        <div class="num-cell">fast @r.WorkerEvidencePct% · lead @r.LeadEvidencePct%</div>
+                        <div class="num-cell">fast worker @r.FastWorkerEvidencePct% · lead agent @r.LeadAgentEvidencePct%</div>
                     </div>
                     <div>
                         <div class="ext-field-label">Retention</div>
@@ -276,8 +303,8 @@
             <span style="display:flex;gap:.75rem;align-items:center;">
                 <label class="form-label" for="layerPick" style="margin:0;">Layer</label>
                 <select class="form-select" id="layerPick" style="width:auto">
-                    <option value="LEAD">Lead agent</option>
-                    <option value="WORKER">Fast workers</option>
+                    <option value="LEAD_AGENT">Lead agent</option>
+                    <option value="FAST_WORKER">Fast worker agents</option>
                 </select>
                 <label class="form-label" for="runPick" style="margin:0;">Run</label>
                 <select class="form-select" id="runPick" style="width:auto"></select>
@@ -327,70 +354,142 @@
         const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
             ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-        // Repeatability is easiest to inspect as a presence matrix over the UNION of all companies
-        // found in all runs. Do not use run 1 as the baseline: a company first found in run 2 would
-        // otherwise disappear from the comparison entirely. This mirrors the server-side identity
-        // key (direction + normalised counterparty), including its legal-suffix normalisation.
+        // Keep browser grouping aligned with the harness identity normalizer.
         const COMPANY_SUFFIXES = new Set([
             'inc', 'corp', 'corporation', 'co', 'ltd', 'limited', 'llc', 'plc', 'gmbh', 'ag',
             'sa', 'nv', 'ab', 'as', 'oy', 'kk'
         ]);
-        const companyKey = name => String(name || '')
-            .toLocaleLowerCase()
-            .replace(/[^\p{L}\p{N}]+/gu, ' ')
-            .trim()
-            .split(/\s+/)
-            .filter(w => w && !COMPANY_SUFFIXES.has(w))
-            .join(' ');
 
-        function renderPresenceMatrices() {
+        // The default result view answers the paper-facing questions first: which canonical company
+        // was found, whether the two layers agree, and whether its direction is stable. The wide
+        // per-run matrices remain available under Raw runs for audit and annotation.
+        function renderMeasurementComparisons() {
+            const normalizedCompanyKey = name => {
+                const words = String(name || '').toLocaleLowerCase()
+                    .replace(/[^\p{L}\p{N}]+/gu, ' ').trim().split(/\s+/).filter(Boolean);
+                const ends = suffix => suffix.every((word, i) => words[words.length - suffix.length + i] === word);
+                if (ends(['l', 'l', 'c'])) words.splice(-3);
+                else if (ends(['s', 'a']) || ends(['n', 'v'])) words.splice(-2);
+                while (words.length && COMPANY_SUFFIXES.has(words[words.length - 1])) words.pop();
+                return words.join(' ');
+            };
+
             document.querySelectorAll('.presence-matrix').forEach(host => {
                 const filingRows = ROWS.filter(r => r.accession === host.dataset.accession);
                 const filingRuns = [...new Set(filingRows.map(r => r.run))].sort((a, b) => a - b);
+                const groups = new Map();
 
-                const layerTable = (layer, title) => {
-                    const groups = new Map();
-                    filingRows.filter(r => r.layer === layer).forEach(r => {
-                        const key = `${String(r.direction || '').toUpperCase()}|${companyKey(r.counterparty)}`;
-                        if (!groups.has(key)) groups.set(key, { direction: r.direction || '—', names: new Set(), runs: new Set() });
-                        const g = groups.get(key);
-                        g.names.add(r.counterparty);
-                        g.runs.add(r.run); // duplicates inside one run count only once
+                filingRows.forEach(row => {
+                    const key = normalizedCompanyKey(row.counterparty);
+                    if (!key) return;
+                    if (!groups.has(key)) groups.set(key, {
+                        names: new Set(), directions: new Set(),
+                        fastWorkerRuns: new Set(), leadAgentRuns: new Set(),
+                        fastWorkerRows: [], leadAgentRows: []
                     });
+                    const group = groups.get(key);
+                    group.names.add(row.counterparty);
+                    if (row.direction) group.directions.add(String(row.direction).toUpperCase());
+                    const layerRows = row.layer === 'FAST_WORKER'
+                        ? group.fastWorkerRows : group.leadAgentRows;
+                    const layerRuns = row.layer === 'FAST_WORKER'
+                        ? group.fastWorkerRuns : group.leadAgentRuns;
+                    layerRows.push(row);
+                    layerRuns.add(row.run);
+                });
 
-                    const ordered = [...groups.values()].sort((a, b) => {
-                        const byCount = b.runs.size - a.runs.size;
-                        return byCount || [...a.names][0].localeCompare([...b.names][0]);
+                const items = [...groups.values()].map(group => {
+                    const names = [...group.names].sort((a, b) => b.length - a.length || a.localeCompare(b));
+                    const directionConflict = group.directions.size > 1;
+                    const stable = !directionConflict &&
+                        group.fastWorkerRuns.size === filingRuns.length &&
+                        group.leadAgentRuns.size === filingRuns.length;
+                    let status = stable ? 'Stable'
+                        : directionConflict ? 'Direction conflict'
+                        : group.fastWorkerRuns.size > group.leadAgentRuns.size ? 'Lead-agent variance'
+                        : group.fastWorkerRuns.size === 0 ? 'Lead-agent only'
+                        : group.leadAgentRuns.size === 0 ? 'Fast-worker only'
+                        : 'Unstable';
+                    const evidenceRows = [...group.fastWorkerRows, ...group.leadAgentRows];
+                    const evidencePct = evidenceRows.length
+                        ? 100 * evidenceRows.filter(row => row.evidenceFound).length / evidenceRows.length : 0;
+                    return { ...group, names, primary: names[0], directionConflict, stable, status, evidencePct };
+                }).sort((a, b) => {
+                    if (a.stable !== b.stable) return a.stable ? 1 : -1;
+                    const deltaA = Math.abs(a.fastWorkerRuns.size - a.leadAgentRuns.size);
+                    const deltaB = Math.abs(b.fastWorkerRuns.size - b.leadAgentRuns.size);
+                    return deltaB - deltaA || b.fastWorkerRuns.size - a.fastWorkerRuns.size ||
+                        a.primary.localeCompare(b.primary);
+                });
+
+                const dots = runs => `<span class="measure-frequency"><span class="measure-dots">${
+                    filingRuns.map(run => runs.has(run) ? '●' : '<span class="off">●</span>').join('')
+                }</span><strong>${runs.size}/${filingRuns.length}</strong></span>`;
+                const statusClass = item => item.stable ? 'stable'
+                    : item.directionConflict || item.status.endsWith('only') ? 'problem' : 'warning';
+
+                const detail = item => `<div class="measure-detail-grid">
+                    <div><div class="ext-field-label">Aliases</div><div class="muted-cell">${esc(item.names.join(' · '))}</div></div>
+                    <div><div class="ext-field-label">Directions observed</div><div class="muted-cell">${esc([...item.directions].join(' · ') || '—')}</div></div>
+                    <div><div class="ext-field-label">Per-run presence</div>
+                        ${filingRuns.map(run => `<div class="muted-cell">Run ${run}: fast worker ${item.fastWorkerRuns.has(run) ? 'YES' : '—'} · lead agent ${item.leadAgentRuns.has(run) ? 'YES' : '—'}</div>`).join('')}
+                    </div>
+                </div>`;
+
+                const comparisonTable = subset => `<div style="overflow-x:auto"><table class="terminal-table measure-comparison" style="width:100%;">
+                    <thead><tr><th>Counterparty</th><th>Direction</th><th>Fast workers</th><th>Lead agent</th><th>Evidence</th><th>Status</th></tr></thead>
+                    <tbody>${subset.length ? subset.map(item => `<tr>
+                        <td class="name-cell"><details class="measure-counterparty-detail"><summary>${esc(item.primary)} <span class="muted-cell">▾</span></summary>${detail(item)}</details></td>
+                        <td class="tag-cell">${esc([...item.directions].join(' / ') || '—')}</td>
+                        <td>${dots(item.fastWorkerRuns)}</td><td>${dots(item.leadAgentRuns)}</td>
+                        <td class="num-cell">${item.evidencePct.toFixed(1)}%</td>
+                        <td><span class="measure-status ${statusClass(item)}">${esc(item.status)}</span></td>
+                    </tr>`).join('') : '<tr><td colspan="6" class="muted-cell">No counterparties in this group.</td></tr>'}</tbody>
+                </table></div>`;
+
+                const rawLayer = (layer, title) => {
+                    const rows = filingRows.filter(row => row.layer === layer);
+                    const rawGroups = new Map();
+                    rows.forEach(row => {
+                        const key = `${String(row.direction || '').toUpperCase()}|${normalizedCompanyKey(row.counterparty)}`;
+                        if (!rawGroups.has(key)) rawGroups.set(key, { names:new Set(), direction:row.direction || '—', runs:new Set() });
+                        rawGroups.get(key).names.add(row.counterparty);
+                        rawGroups.get(key).runs.add(row.run);
                     });
-                    const body = ordered.length ? ordered.map(g => {
-                        const names = [...g.names].sort((a, b) => a.length - b.length || a.localeCompare(b));
-                        const pct = filingRuns.length ? 100 * g.runs.size / filingRuns.length : 0;
-                        return `<tr>
-                            <td class="name-cell">${esc(names[0])}${names.length > 1
-                                ? `<div class="muted-cell" title="Raw name variants">${esc(names.slice(1).join(' · '))}</div>` : ''}</td>
-                            <td class="tag-cell">${esc(g.direction)}</td>
-                            ${filingRuns.map(run => `<td class="num-cell">${g.runs.has(run) ? 'YES' : '—'}</td>`).join('')}
-                            <td class="num-cell"><strong>${g.runs.size}/${filingRuns.length}</strong></td>
-                            <td class="num-cell">${pct.toFixed(1)}%</td>
-                        </tr>`;
-                    }).join('') : `<tr><td colspan="${filingRuns.length + 4}" class="muted-cell">No counterparties found.</td></tr>`;
-
-                    return `<div style="margin-top:.9rem;overflow-x:auto;">
-                        <div class="ext-field-label" style="margin-bottom:.35rem;">${esc(title)}</div>
-                        <table class="terminal-table" style="min-width:46rem;">
-                            <thead><tr><th>Counterparty</th><th>Direction</th>
-                                ${filingRuns.map(run => `<th>Run ${run}</th>`).join('')}
-                                <th>Appeared</th><th>Repeatability</th>
-                            </tr></thead>
-                            <tbody>${body}</tbody>
-                        </table>
-                    </div>`;
+                    return `<div style="margin-top:.9rem;overflow-x:auto"><div class="ext-field-label">${esc(title)}</div>
+                        <table class="terminal-table" style="min-width:44rem"><thead><tr><th>Counterparty</th><th>Direction</th>${filingRuns.map(run => `<th>Run ${run}</th>`).join('')}<th>Frequency</th></tr></thead>
+                        <tbody>${[...rawGroups.values()].map(group => `<tr><td class="name-cell">${esc([...group.names].sort((a,b)=>b.length-a.length)[0])}</td><td class="tag-cell">${esc(group.direction)}</td>${filingRuns.map(run => `<td class="num-cell">${group.runs.has(run) ? 'YES' : '—'}</td>`).join('')}<td class="num-cell"><strong>${group.runs.size}/${filingRuns.length}</strong></td></tr>`).join('')}</tbody></table></div>`;
                 };
 
-                host.innerHTML = `<div class="ext-field-label">Counterparty presence across all runs</div>
-                    <div class="form-text">Union of all canonicalised counterparties; YES means the company-direction pair appeared at least once in that run.</div>
-                    ${layerTable('WORKER', 'Fast workers')}
-                    ${layerTable('LEAD', 'Lead agent')}`;
+                const stable = items.filter(item => item.stable);
+                const disagreements = items.filter(item => !item.stable);
+                const conflicts = items.filter(item => item.directionConflict).length;
+                const leadAgentDrops = items.filter(
+                    item => item.fastWorkerRuns.size > item.leadAgentRuns.size).length;
+                const evidenceRows = filingRows.filter(row => row.evidence != null);
+                const evidencePct = evidenceRows.length ? 100 * evidenceRows.filter(row => row.evidenceFound).length / evidenceRows.length : 0;
+
+                host.innerHTML = `<div class="measure-summary">
+                    <div class="measure-summary-card"><span class="measure-summary-value">${items.length}</span><span class="muted-cell">counterparties</span></div>
+                    <div class="measure-summary-card"><span class="measure-summary-value">${stable.length}</span><span class="muted-cell">stable</span></div>
+                    <div class="measure-summary-card"><span class="measure-summary-value">${disagreements.length}</span><span class="muted-cell">need attention</span></div>
+                    <div class="measure-summary-card"><span class="measure-summary-value">${conflicts}</span><span class="muted-cell">direction conflicts</span></div>
+                    <div class="measure-summary-card"><span class="measure-summary-value">${leadAgentDrops}</span><span class="muted-cell">lead-agent variances</span></div>
+                    <div class="measure-summary-card"><span class="measure-summary-value">${evidencePct.toFixed(1)}%</span><span class="muted-cell">evidence found</span></div>
+                </div>
+                <div class="measure-tabs">
+                    <button type="button" class="measure-tab is-active" data-tab="issues">Disagreements (${disagreements.length})</button>
+                    <button type="button" class="measure-tab" data-tab="consensus">Consensus (${stable.length})</button>
+                    <button type="button" class="measure-tab" data-tab="raw">Raw runs</button>
+                </div>
+                <div class="measure-panel" data-panel="issues">${comparisonTable(disagreements)}</div>
+                <div class="measure-panel" data-panel="consensus" hidden>${comparisonTable(stable)}</div>
+                <div class="measure-panel" data-panel="raw" hidden>${rawLayer('FAST_WORKER','Fast worker agents')}${rawLayer('LEAD_AGENT','Lead agent')}</div>`;
+
+                host.querySelectorAll('.measure-tab').forEach(button => button.addEventListener('click', () => {
+                    host.querySelectorAll('.measure-tab').forEach(tab => tab.classList.toggle('is-active', tab === button));
+                    host.querySelectorAll('.measure-panel').forEach(panel => panel.hidden = panel.dataset.panel !== button.dataset.tab);
+                }));
             });
         }
 
@@ -489,9 +588,10 @@
         // in this table — generating it in C# would mean a second writer producing a stale column.
         const COLS = ['extractionMode', 'layer', 'company', 'cik', 'accession', 'doc', 'run', 'counterparty', 'direction',
             'what', 'evidence', 'section', 'evidenceFound', 'runsPresent',
-            'whatVariants', 'sectionCandidates', 'runChunks', 'runWorkerItems',
-            'runLeadItems', 'runErrors', 'workerEvidencePct', 'workerRepeatPct', 'leadEvidencePct',
-            'leadRepeatPct', 'retentionPct', 'totalErrors', 'judgement', 'model', 'runAt'];
+            'whatVariants', 'sectionCandidates', 'runChunks', 'runFastWorkerClaims',
+            'runLeadAgentClaims', 'runErrors', 'fastWorkerEvidencePct', 'fastWorkerRepeatPct',
+            'leadAgentEvidencePct', 'leadAgentRepeatPct', 'retentionPct', 'totalErrors',
+            'judgement', 'model', 'runAt'];
         // Quote text, leave numbers/booleans bare so Excel reads them as numbers and COUNTIF works.
         const cell = v => v == null ? ''
             : (typeof v === 'number' || typeof v === 'boolean') ? String(v).toUpperCase()
@@ -502,7 +602,7 @@
 
         runPick.addEventListener('change', render);
         layerPick.addEventListener('change', render);
-        renderPresenceMatrices();
+        renderMeasurementComparisons();
         render();
 
         document.getElementById('csvDownload').addEventListener('click', () => {

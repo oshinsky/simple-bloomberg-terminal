@@ -6,16 +6,6 @@ namespace simple_bloomberg_terminal.Services.Clients.Edgar;
 // JsonSerializerDefaults.Web (camelCase, case-insensitive), so only the keys that don't
 // match a C# property name by case (hyphens, snake_case) need an explicit attribute.
 
-// /api/xbrl/companyfacts/CIK{cik10}.json
-public record EdgarCompanyFacts(EdgarFacts? Facts);
-
-public record EdgarFacts(
-    [property: JsonPropertyName("us-gaap")] Dictionary<string, EdgarConcept>? UsGaap);
-
-public record EdgarConcept(Dictionary<string, List<EdgarFact>>? Units);
-
-public record EdgarFact(string? End, double? Val, int? Fy, string? Fp, string? Form);
-
 // /submissions/CIK{cik10}.json (parallel arrays under filings.recent)
 public record EdgarSubmissions(EdgarFilings? Filings);
 

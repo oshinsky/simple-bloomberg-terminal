@@ -947,8 +947,6 @@ document.addEventListener('submit', async e => {
             const startMs = j.createdAt ? Date.parse(j.createdAt) : Date.now();
             const elapsed = running
                 ? `<span class="scan-notify-elapsed" data-start="${startMs}">${escapeHtml(fmtElapsed(Date.now() - startMs))}</span>` : '';
-            // The audited XBRL tagged facts (COST/REVENUE), shown above the Item tree as the answer key.
-            const xbrl = xbrlBox(j);
             // Once the scan has planned its chunks, the section tree replaces the coarse phase text.
             const tree = sectionTree(j);
             const progress = tree ? '' : (running
@@ -982,7 +980,7 @@ document.addEventListener('submit', async e => {
                     ${elapsed}
                     <button class="scan-notify-job-x" data-dismiss="${j.id}" title="Dismiss">&times;</button>
                 </div>
-                ${progress}${xbrl}${tree}${result}${sources}${verdict}
+                ${progress}${tree}${result}${sources}${verdict}
             </div>`;
         }).join('');
         // Skip the DOM teardown/rebuild (and the listener re-bind below) when the markup is
@@ -997,41 +995,6 @@ document.addEventListener('submit', async e => {
                 const k = d.getAttribute('data-key');
                 if (d.open) openSections.add(k); else openSections.delete(k);
             }));
-    }
-
-    // The extracted XBRL tagged facts (the audited "answer key" the prose is reconciled against),
-    // rendered as an expandable box above the Item tree. Only numeric nodes carry one (j.xbrl is null
-    // for RISK / re-discovery / a filing that tagged nothing). Reuses the scan-sec collapsible shell.
-    function xbrlBox(j) {
-        const x = j.xbrl;
-        if (!x || (!x.totals.length && !x.segments.length)) return '';
-        const usd = n => n == null ? 'n/a' : '$' + Number(n).toLocaleString(undefined, { maximumFractionDigits: 0 });
-        const key = `${j.id}:xbrl`;
-
-        const totals = x.totals.map(t =>
-            `<div class="scan-xbrl-row"><span class="scan-xbrl-label">${escapeHtml(t.label)}</span>
-                <span class="scan-xbrl-val">${usd(t.value)}</span></div>`).join('');
-
-        const segs = x.segments.length
-            ? `<div class="scan-xbrl-seg-head">Per-segment</div>` + x.segments.map(s =>
-                `<div class="scan-xbrl-row${s.reconciles ? '' : ' is-bad'}" ${s.detail ? `title="${escapeHtml(s.detail)}"` : ''}>
-                    <span class="scan-xbrl-label">${escapeHtml(s.segment)}${s.reconciles ? '' : ' ⚠'}</span>
-                    <span class="scan-xbrl-val">${usd(s.value)}</span></div>`).join('')
-            : '';
-
-        const sum = x.sumCheck
-            ? `<div class="scan-xbrl-sum ${x.sumCheck.ties ? 'ties' : 'differs'}">
-                   Σ segments ${usd(x.sumCheck.segmentSum)} vs total ${usd(x.sumCheck.total)} — ${x.sumCheck.ties ? 'ties' : 'differs'}
-               </div>` : '';
-
-        const period = x.periodEnd ? `<span class="scan-xbrl-period">period ending ${escapeHtml(x.periodEnd)}</span>` : '';
-        return `<details class="scan-sec scan-xbrl" data-key="${escapeHtml(key)}"${openSections.has(key) ? ' open' : ''}>
-            <summary class="scan-sec-sum">
-                <span class="scan-sec-name">XBRL tagged facts</span>
-                <span class="scan-sec-prog">${escapeHtml(x.node)} · audited</span>
-            </summary>
-            <div class="scan-sec-body scan-xbrl-body">${period}${totals}${segs}${sum}</div>
-        </details>`;
     }
 
     // While a scan runs/finishes, render its Item sections as expandable boxes — open one to see the

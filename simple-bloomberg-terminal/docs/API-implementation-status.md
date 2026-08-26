@@ -7,7 +7,7 @@ built and verified** as of now.
 ## Scope of this work
 
 Assignment task = complete CRUD + DTO API for all entities **+ integration tests**.
-SEC EDGAR `StockService` is intentionally **out of scope** (not built).
+SEC EDGAR support is limited to ticker resolution and ordinary filing access.
 
 Confirmed decisions:
 - **Mapping:** AutoMapper (package `AutoMapper` **16.1.1**). One `MappingProfile.cs`.
@@ -138,4 +138,3 @@ Fixed by making required FKs nullable in the request DTOs: `[Required] public lo
 Touched DTOs: Company, GdpSnapshot, CountryAdvantage, CountryChallenge, CountryDetails,
 RevenueSource, CostSource. Still-open edge: an explicit `0` passes presence validation and
 500s on the FK — would need a controller-level existence check (not done; different concern).
-

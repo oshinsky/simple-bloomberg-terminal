@@ -36,7 +36,7 @@ gets notified on completion, chats with the grounded model, edits objects, and b
 ## Architecture at a glance
 
 ```
-Extraction page  ──POST /scan-auto-async──▶  ScanJob (singleton store) ──Task.Run(own DI scope)──▶ ScanAutoAsync + auto-summary
+Extraction page  ──POST /scan-auto-async──▶  ScanJob (singleton store) ──Task.Run(own DI scope)──▶ RunFastWorkerScanAsync + auto-summary
       │                                            ▲   ▲
  window.startScanJob(jobId, meta)                  │   │
       │                                   GET /scan-jobs?ids=   (list poll, every 2.5s, every page)
@@ -62,7 +62,7 @@ SignalR/SSE — deliberately, to match the codebase's fetch-only style.
 - `ScanJob` — the per-scan state object (NOT an EF entity; pure in-memory):
   - identity: `Id`, `CompanyId`, `CompanyName`, `Accession`, `Doc`, `Node`, `Form`, `FilingLabel`
   - scan: `Status` (`Running`/`Done`/`Error`), `Progress` (live phase text), `Report`
-    (`AutoScanResult`), `Summary` (auto AI prose), `Error`, `CreatedAt`, `CompletedAt`
+    (`FastWorkerScanResult`), `Summary` (auto AI prose), `Error`, `CreatedAt`, `CompletedAt`
   - reply buffer (used for BOTH the initial auto-summary and follow-up chat replies): `Replying`,
     `ReplyBuffer` (incremental answer), `ReplyThink` (reasoning), `ReplyError`
 - `ScanJobStore` — `ConcurrentDictionary<string, ScanJob>` with `Add`/`Get`/`Remove`.
@@ -74,7 +74,7 @@ Injects `ScanJobStore _jobs` and `IServiceScopeFactory _scopeFactory`. All route
 
 | Route | Action | Purpose |
 |-------|--------|---------|
-| `POST /extraction/scan-auto-async/{companyId}` | `ScanAutoAsync` | Registers a `ScanJob`, fires the scan + auto-summary on `Task.Run` (own scope), returns `{ jobId }` immediately. Sets `Progress` phases around the awaited call. |
+| `POST /extraction/scan-auto-async/{companyId}` | `RunFastWorkerScanAsync` | Registers a `ScanJob`, fires the scan + auto-summary on `Task.Run` (own scope), returns `{ jobId }` immediately. Sets `Progress` phases around the awaited call. |
 | `GET /extraction/scan-jobs?ids=a,b,c` | `ScanJobs` | Status of the jobs the browser tracks. Returns `{ id, status, progress, replying, createdAt, companyId, companyName, accession, doc, node, form, filingLabel, found, summary, error }`. |
 | `POST /extraction/scan-jobs/dismiss/{jobId}` | `DismissScanJob` | Removes a job from the store. |
 | `POST /extraction/scan-jobs/{jobId}/reply` | `ScanJobReply` | Starts a **detached** chat reply (own scope) streaming into `ReplyBuffer`/`ReplyThink`. Body: `{ messages: [{role,content}] }`. 409 if already replying. |
@@ -82,10 +82,12 @@ Injects `ScanJobStore _jobs` and `IServiceScopeFactory _scopeFactory`. All route
 | `POST /extraction/save-batch` | `SaveBatch` | Saves many ticked objects at once (see below). |
 
 Reused (no new persistence logic):
-- `IFilingExtractionService.ScanAutoAsync` — runs the parallel scan and **caches the findings digest**
+- `IFastWorkerScanService.RunFastWorkerScanAsync` — runs the parallel scan and **caches the fast-worker digest**
   in `IMemoryCache` (key `filing-findings:{node}:{accession}:{doc}`).
-- `IExtractionChatService.StreamReplyAsync` — grounds on that cached digest; used both for the
-  auto-summary and for chat replies.
+- `IFilingAnalysisContextService` — grounds consumers on the cached digest or filing-text fallback.
+- `ILeadAgentRunner` — executes a prompt against that context without imposing chat semantics.
+- `IExtractionChatService.StreamReplyAsync` — adds the conversational prompt, history, save blocks, and
+  handoffs; used for the auto-summary and chat replies, but not by the measurement harness.
 - `UpsertRow`, `GetOrCreateCompanyAsync`, `EnsureReciprocal`,
   `ResolveFilingId` — the existing save / link-counterparty helpers.
 
@@ -111,8 +113,8 @@ present, else a minimal stub) and creates the reciprocal mirror row via `EnsureR
   old nested shape as a fallback, because save blocks are parsed out of conversations already stored in
   localStorage.
 
-### `Services/ExtractionChatService.cs`
-The ```save``` block schema in `SystemFor(node)` (revenue & cost) gained an optional
+### `Services/Extraction/Chat/ExtractionChatService.cs`
+The ```save``` block schema in `LeadAgentPromptFor(node)` (revenue & cost) gained an optional
 `related_company_ticker` so the model can supply a counterparty's ticker, enabling the FMP/Yahoo
 enrichment path in `SaveBatch`.
 
@@ -186,7 +188,7 @@ Key functions:
 
 1. Extraction page → `POST /scan-auto-async` → `{jobId}` → `window.startScanJob` adds id to
    `localStorage`, opens the panel, starts polling.
-2. Background task runs `ScanAutoAsync` (caches digest) then one `StreamReplyAsync` turn streamed into
+2. Background task runs `RunFastWorkerScanAsync` (caches the fast-worker digest) then one `StreamReplyAsync` turn streamed into
    `ReplyBuffer`/`ReplyThink` with `Replying=true` (so the widget renders the first answer generating
    live); on finish it copies the text to `Summary`, clears `Replying`, sets `Status=Done`.
 3. List poll sees `Running→Done` → surfaces the panel (notification).
@@ -205,7 +207,7 @@ Key functions:
 The running job's box expands into one box **per SEC Item** (Item 1 / 7 / 8 …); opening a section
 shows its **parallel agent calls** with live status (queued → running → done · N found / error).
 
-- `FilingExtractionService.ScanAutoAsync` now takes an `Action<ScanProgress>? onProgress`. It packs
+- `FastWorkerScanService.RunFastWorkerScanAsync` takes an `Action<FastWorkerScanProgress>? onProgress`. It packs
   consecutive same-Item headings into one worker call up to `FilingSections.MaxChunkChars` (fewer
   LLM calls — a tiny heading no longer burns its own call), emits one `Planned` event with the full
   chunk plan, then `Running`/`Done`/`Error` per chunk as the 6-wide pool (`MaxParallel`) drains.
@@ -242,7 +244,7 @@ shows its **parallel agent calls** with live status (queued → running → done
 | `Program.cs` | registers `ScanJobStore` |
 | `Controllers/ExtractionController.cs` | scan-auto-async, scan-jobs(+dismiss), reply (POST/GET), save-batch |
 | `Models/ViewModels/ExtractionViewModels.cs` | `ScanJobReplyRequest`, `SaveBatchRequest`, `SaveBatchItem` |
-| `Services/ExtractionChatService.cs` | `related_company_ticker` in the save-block schema |
+| `Services/Extraction/Chat/ExtractionChatService.cs` | `related_company_ticker` in the save-block schema |
 | `Views/Shared/_Layout.cshtml` | widget + edit-modal markup |
 | `wwwroot/css/site.css` | `scan-notify-*` / `scan-edit-*` styles |
 | `wwwroot/js/site.js` | the widget IIFE (poll, chat, checklist, edit, drag) |

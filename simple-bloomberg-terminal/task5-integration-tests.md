@@ -187,7 +187,7 @@ Business process, not CRUD. Tests:
 - **Missing snapshot**: 400 validation
 - **Filing soft-delete revival**: soft-deleted filing is revived (not duplicated) on re-reference
 
-**What's missing**: The `[Authorize(Roles = "Admin,Manager")]` on ExtractionController appears not to block tests (see Section 4). Many extraction actions untested: `Save`, `SaveBatch`, `Review`, `AutoExtract`, `ScanAuto`, `ScanAutoAsync`, `ScanJobs`, `Chat`, `DiscoverRelated`, `LinkCounterparty`. Most of these require external AI/API calls (DeepSeek, Perplexity, FMP, Yahoo) and cannot be tested without fakes for those services.
+**What's missing**: The `[Authorize(Roles = "Admin,Manager")]` on ExtractionController appears not to block tests (see Section 4). Many extraction actions untested: `Save`, `SaveBatch`, `Review`, `AutoExtract`, `ScanAuto`, `RunFastWorkerScanAsync`, `ScanJobs`, `Chat`, `DiscoverRelated`, `LinkCounterparty`. Most of these require external AI/API calls (DeepSeek, Perplexity, FMP, Yahoo) and cannot be tested without fakes for those services.
 
 ### GraphApiTests (5 tests) — GraphController
 
@@ -258,7 +258,7 @@ The test suite does **not** set up or test any authentication/authorization. Key
 | IYahooFinanceClient | No | ExtractionController (LinkCounterparty) |
 | IExchangeRateApiClient | No | ExtractionController (LinkCounterparty) |
 | IExtractionChatService (DeepSeek) | No | ExtractionController (Review, Chat) |
-| IFilingExtractionService (DeepSeek) | No | ExtractionController (AutoExtract, ScanAuto) |
+| IFastWorkerScanService (DeepSeek) | No | ExtractionController (AutoExtract, ScanAuto) |
 | ICounterpartyDiscovery (Perplexity) | No | ExtractionController (DiscoverRelated) |
 | EventImpactService | No | ImpactController |
 

@@ -101,7 +101,7 @@
             </div>
         </div>
         <div id="endpointLabel" class="ext-endpoint"></div>
-        <pre id="response" class="extraction-json">Load a company, then open Company Facts or a filing.</pre>
+        <pre id="response" class="extraction-json">Load a company, then open a filing.</pre>
         <div class="doc-shell">
             <div id="responseHtml" class="extraction-doc" hidden></div>
             <nav id="docToc" class="doc-toc" hidden></nav>
@@ -333,9 +333,9 @@
     const docToc = document.getElementById('docToc');
     const endpointLabel = document.getElementById('endpointLabel');
     const rowPicker = document.getElementById('rowPicker');
-    let edgarRows = [];        // revenue rows pulled from the refresh response (left pre-fill)
+    let edgarRows = [];        // existing source rows used for left-pane pre-fill
     let currentRowId = null;   // bound source row; null => first reference creates it
-    let currentFiling = null;  // the filing doc currently open (null when viewing Company Facts)
+    let currentFiling = null;  // the filing document currently open
 
     const $ = id => document.getElementById(id);
     const numOrNull = v => v === '' || v == null ? null : Number(v);
@@ -532,17 +532,6 @@
         fillCells(null);
     });
 
-    // ---- right pane: Company Facts ----
-    async function loadFacts() {
-        const id = companyId();
-        if (!id) { uiAlert('Pick a company first.'); return; }
-        showText('Loading company facts…', '');
-        const res = await fetch(`/api/stock/facts/${id}`);
-        if (!res.ok) { showText(`Facts failed (${res.status}): ${await res.text()}`, ''); return; }
-        let body = await res.text();
-        try { body = JSON.stringify(JSON.parse(body), null, 2); } catch { /* leave raw */ }
-        showText(body, `GET /api/stock/facts/${id}`);
-    }
 
     // ---- Wide filings browser (overlay) ----
     const filingsModal = $('filingsModal');
@@ -652,7 +641,7 @@
             // The row's proof. Omitted (null) fields keep whatever citation is already on the row.
             reference: $('f_reference').value.trim() || null,
             evidence: evidence || null,
-            // Only sent when a filing doc is open in the right pane; null from Company Facts.
+            // Only sent when a filing document is open in the right pane.
             filingAccessionNumber: currentFiling?.accessionNumber || null,
             filingForm: currentFiling?.form || null,
             filingDate: currentFiling?.filingDate || null,
@@ -718,7 +707,7 @@
         rowPicker.appendChild(o);
         rowPicker.value = row.id;
         fillCells(row);          // sets cells + currentRowId + loads the row's existing proof
-        loadFacts();             // open the right pane so the user can browse/select proof
+        showText('Open a filing to browse and select proof.', '');
     })();
 })();
 </script>

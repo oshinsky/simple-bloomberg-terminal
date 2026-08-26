@@ -2174,53 +2174,6 @@ main { animation: pageFadeIn 0.18s ease; }
 }
 @keyframes scanSpin { to { transform: rotate(360deg); } }
 
-/* ── XBRL tagged-facts box (above the Item tree): the audited "answer key" ── */
-.scan-xbrl { border-color: var(--border-accent); }
-.scan-xbrl-body { font-size: 0.72rem; }
-.scan-xbrl-period {
-  font-family: var(--font-mono);
-  color: var(--muted);
-  font-size: 0.68rem;
-  margin-bottom: 0.1rem;
-}
-.scan-xbrl-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-.scan-xbrl-row.is-bad .scan-xbrl-label,
-.scan-xbrl-row.is-bad .scan-xbrl-val { color: var(--red); }
-.scan-xbrl-label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text-secondary);
-}
-.scan-xbrl-val {
-  flex: 0 0 auto;
-  font-family: var(--font-mono);
-  color: var(--text-code);
-}
-.scan-xbrl-seg-head {
-  margin-top: 0.25rem;
-  font-family: var(--font-display);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  font-size: 0.64rem;
-  color: var(--muted);
-}
-.scan-xbrl-sum {
-  margin-top: 0.3rem;
-  padding-top: 0.25rem;
-  border-top: 1px solid var(--border-subtle);
-  font-family: var(--font-mono);
-  font-size: 0.68rem;
-}
-.scan-xbrl-sum.ties { color: var(--green); }
-.scan-xbrl-sum.differs { color: var(--red); }
-
 /* ── expanded chat for one job ── */
 /* Fixed height so the chat is one bounded budget: growing the saves block
    shrinks the log instead of stretching the whole popup. */

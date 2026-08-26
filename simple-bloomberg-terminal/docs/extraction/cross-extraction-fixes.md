@@ -12,7 +12,7 @@ target segment's agent — **reusing** a tracked job for that filing+node, or **
 one**. The target agent records it as a ` ```save ` block in its own checklist; the user ticks + Save.
 
 Key files:
-- `Services/ExtractionChatService.cs` — `SystemFor(node, handoff)`, `HandoffSuffix`, `HandoffReceiverSuffix`, `StreamReplyAsync(..., bool handoff)`.
+- `Services/Extraction/Chat/ExtractionChatService.cs` — `LeadAgentPromptFor(node, handoff)`, `HandoffSuffix`, `HandoffReceiverSuffix`, `StreamReplyAsync(..., bool handoff)`.
 - `Controllers/ExtractionController.cs` — `POST scan-handoff/{companyId}` (worker-less spawn), `ScanJobReply` (handoff flag on the reuse path).
 - `Services/CompanyProvisioningService.cs` — `GetOrCreateCounterpartyAsync` (CIK match).
 - `Repositories/CompanyRepository.cs` — `MatchByCik`.
@@ -43,11 +43,10 @@ or the loop returns.
 ## Bug 2 — qualitative items refused (no dollar value → not saved)
 
 **Symptom.** Even when the COST agent engaged, it refused to save a supplier dependency because it had
-no dollar figure traceable to the tagged XBRL.
+no dollar figure.
 
-**Root cause.** The COST/REVENUE system prompts lean hard on "PREFER the audited tagged XBRL `value`".
-A counterparty dependency (TSMC, Microsoft) is qualitative — there's no XBRL line for it — so the agent
-concluded it wasn't a valid cost record.
+**Root cause.** The old prompts overemphasized numeric values. A qualitative counterparty dependency
+is still a valid relationship, so the agent should not require a figure.
 
 **Fix.** `HandoffReceiverSuffix` explicitly licenses null-value records: "the item may be a qualitative
 relationship (supplier/customer/counterparty dependency) with NO dollar figure — that is expected and
@@ -84,10 +83,10 @@ ticker-less / CIK-less existing row still can't be matched this way — those fa
 
 ## Architectural traps we hit (not bugs, but easy to get wrong)
 
-- **Grounding silently re-scans.** `StreamReplyAsync` → `GroundingAsync` → `GetOrScanDigestAsync`
-  **runs the worker swarm if the digest isn't cached** (`FilingExtractionService`). A hand-off must NOT
-  re-discover what the source already found, so `handoff: true` sets `scanIfMissing: false` — grounding
-  reads only cached findings (+ raw-text fallback + cheap XBRL), never fans out.
+- **Lead-agent context silently re-scans.** `StreamReplyAsync` → `BuildLeadAgentContextAsync` → `GetOrCreateFastWorkerDigestAsync`
+  **runs the fast worker agents if the digest isn't cached** (`FastWorkerScanService`). A hand-off must NOT
+  re-discover what the source already found, so `handoff: true` sets `scanIfMissing: false` — context
+  reads only cached findings plus raw-text fallback and never fans out.
 - **The save-parser reads stored history, not the live buffer.** For a spawned job's first reply to be
   parseable as a ` ```save `, the front-end pre-seeds `chatKey(jobId)` with the `seed` as a user turn,
   and the endpoint sets `job.Summary = reply` — so `ensureChatHistory`/`refreshReply` reconstruct the

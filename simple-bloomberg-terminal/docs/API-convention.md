@@ -49,16 +49,15 @@ demonstrated problem").
 
 - **Plain CRUD + DTO** → controller maps entity↔DTO and calls the repo
   directly. No service.
-- **External stock integration** → one `StockService`. This is the only place
-  with real logic (fetch foreign JSON, map, decide persist, fallback when the
-  API is down). It earns a service because it *combines sources* and *decides*.
+- **SEC filing access** → `IStockApiClient` is the HTTP boundary. Controllers
+  expose ticker resolution, filing metadata, and primary filing documents.
 
 ## 4. Folder layout
 
 ```
 Controllers/Api/        ← one API controller per entity, [ApiController]
 Dtos/                   ← request + response DTOs (nested where related)
-Services/               ← StockService + IStockApiClient (stock flow ONLY)
+Services/Clients/Edgar/ ← IStockApiClient + StockApiClient
 MappingProfile.cs       ← AutoMapper profile (project root or Dtos/)
 ```
 
@@ -131,88 +130,34 @@ var dto = _mapper.Map<CompanyDto>(company);
 - For updates, map the request DTO onto the existing tracked entity:
   `_mapper.Map(updateDto, entity)` then `repo.Update(entity)`.
 
-## 9. External stock data — StockService + SEC EDGAR
+## 9. External stock data — SEC EDGAR filing access
 
 Source: **SEC EDGAR** (free, no key, official US filings). `Company.Cik` is the
 key (10-digit zero-padded). Endpoints in memory `reference_sec_edgar_api.md`.
 
-### What the data feeds — the graph child rows, NOT Company scalars
+### SEC filing access
 
-The valuable EDGAR output lands in the entities the graph renders
-(`RevenueSource`, `CostSource`, `Event`), tagged `DataSource.EDGAR`. It does
-**not** overwrite hand-entered `Company.RevenueTotal`/`GrossMargin`.
+`IStockApiClient` is an HTTP-only boundary for ordinary EDGAR filing access:
 
-### Layers
+- `GetSubmissions(cik10)` lists filings.
+- `GetFilingDocument(cik, accession, document)` downloads a primary filing document.
+- `ResolveCik(ticker)`, `GetCikTickerMap()`, and `GetTickerEntries()` use SEC ticker metadata.
 
-- `IStockApiClient` / `StockApiClient` — HTTP only: base URL `https://data.sec.gov`,
-  required SEC `User-Agent` header (identifying contact email — SEC blocks
-  requests without it), JSON deserialization. Methods:
-  - `GetSubmissions(cik10)` → filings list (`/submissions/CIK{cik10}.json`)
-  - `GetCompanyFacts(cik10)` → XBRL facts (`/api/xbrl/companyfacts/CIK{cik10}.json`)
-  - `ResolveCik(ticker)` → CIK via `https://www.sec.gov/files/company_tickers.json`
-  - Registered with `AddHttpClient<IStockApiClient, StockApiClient>()`.
-- `StockService` — logic: call the client, map foreign payload to entities,
-  persist via repos, fall back when EDGAR is down. Returns `CompanyDto`.
-
-### EDGAR → entity mapping
-
-| EDGAR source                          | Entity        | Field mapping                                                            |
-|---------------------------------------|---------------|--------------------------------------------------------------------------|
-| `companyfacts` us-gaap `Revenues` / `RevenueFromContractWithCustomerExcludingAssessedTax` | `RevenueSource` | `SourceType=SEGMENT`, `Value`, `Name="Revenue {period}"`, `DataSource=EDGAR`, `RelatedCompanyId=null` |
-| `companyfacts` revenue **segment** concepts | `RevenueSource` | `SourceType=SEGMENT`, one row per segment, `DataSource=EDGAR`          |
-| `companyfacts` `CostOfRevenue` / `CostOfGoodsAndServicesSold` | `CostSource` | `CostBase=COGS`, `Value`, `DataSource=EDGAR`, `RelatedCompanyId=null`     |
-| `companyfacts` `OperatingExpenses`    | `CostSource`  | `CostBase=OPEX`, `Value`, `DataSource=EDGAR`                             |
-| `submissions` form `10-K` / `10-Q`    | `Event`       | `Type=EARNINGS`, `Title="{form} filed {date}"`, `Date=filingDate`        |
-| `submissions` form `8-K`              | `Event`       | `Type=CORPORATE_ACTION`, `Title`, `Date=filingDate`                      |
-
-Notes:
-- EDGAR aggregates have no counterparty, so `RelatedCompanyId` is always null on
-  EDGAR-sourced rows — they appear in the REVENUE/COST hubs, not RELATED COMPANIES.
-- `Event` is many-to-many with `Company` — add to `event.Companies` / `company.Events`.
-- `Event` has no `DataSource` field; see idempotency below for how filings dedupe.
-
-### Refresh flow (persist, idempotent)
-
-```
-POST /api/stock/refresh/{companyId}
-  company = _companies.GetById(companyId)        // 404 if missing
-  if company.Cik is null  -> 409 Conflict        // non-filer, no SEC data
-  cik10 = company.Cik.PadLeft(10, '0')
-  facts    = client.GetCompanyFacts(cik10)
-  filings  = client.GetSubmissions(cik10)
-  // idempotency: clear prior EDGAR-tagged rows for this company, then reinsert
-  soft-delete RevenueSources/CostSources where CompanyId==id && DataSource==EDGAR
-  insert mapped RevenueSource / CostSource / Event rows
-  return CompanyDto (with nested sources + events)
-```
-
-- **Idempotency:** refresh wipes only `DataSource==EDGAR` rows, never `MANUAL`
-  ones. For events (no DataSource field), dedupe by `(CompanyId, Title, Date)` —
-  skip a filing if a matching event already exists.
-- **New repo methods needed** (data access stays in repos, per convention):
-  `IRevenueSourceRepository` / `ICostSourceRepository` need a
-  "get/clear by company + DataSource" method. Add them — do not query
-  `AppDbContext` from the service.
-
-### Failure handling
-
-- SEC unreachable / timeout → `503 Service Unavailable`.
-- CIK not found at SEC (404) → `422 Unprocessable Entity` ("not an SEC filer").
-- Respect SEC rate limit (~10 req/s); set the `User-Agent` or requests are blocked.
-- Non-filers in seed data (Aramco, Samsung, Nestlé, LVMH, Reliance, Tencent)
-  have null `Cik` → caught by the 409 check above.
+The application does not fetch structured financial-fact feeds or persist automatically derived financial
+rows. Revenue, cost, and risk records come from filing-text extraction, manual entry, or other explicit
+sources. SEC requests retain the required identifying `User-Agent` and respect SEC rate limits.
 
 ### Endpoints
 
-- `POST /api/stock/refresh/{companyId}` — fetch + persist, returns `CompanyDto`.
-- `GET  /api/stock/resolve/{ticker}` — ticker→CIK helper (optional, read-only).
+- `GET /api/stock/resolve/{ticker}` — ticker-to-CIK lookup.
+- `GET /api/stock/filings/{companyId}` — recent filing metadata.
+- `GET /api/stock/filing/{companyId}?accession=&doc=` — proxied primary filing document.
 
 ## 10. DI registration (Program.cs)
 
 Match the existing `AddScoped<IXxxRepository, XxxRepository>()` style:
 - AutoMapper: `builder.Services.AddAutoMapper(typeof(Program));`
 - Stock client: `builder.Services.AddHttpClient<IStockApiClient, StockApiClient>();`
-- Stock service: `builder.Services.AddScoped<IStockService, StockService>();`
 - No new DI registration needed for plain CRUD controllers (they reuse repos).
 
 ## 11. Entities to cover

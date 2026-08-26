@@ -4,9 +4,8 @@ using simple_bloomberg_terminal.Repositories;
 
 namespace simple_bloomberg_terminal.Services.Extraction;
 
-/// <summary>Who is writing a contribution: a Manager/Admin's writes go live (Approved), everyone
-/// else's are held Pending and stamped with the contributor for a Manager to review. The controller
-/// derives this from the request (role + user id) and passes it in, so the writer stays HTTP-free.</summary>
+// Identifies the contributor and whether writes can go live. The controller builds this context so the
+// writer remains independent of HTTP concerns.
 public readonly record struct Contributor(bool IsReviewer, string? UserId)
 {
     public ContributionStatus NewStatus => IsReviewer ? ContributionStatus.Approved : ContributionStatus.Pending;
@@ -14,20 +13,12 @@ public readonly record struct Contributor(bool IsReviewer, string? UserId)
     public string? StampUserId => IsReviewer ? null : UserId;
 }
 
-/// <summary>
-/// Owns the contribution write + review state machine for the three reviewed source types (revenue,
-/// cost, risk): creating/editing a row (with the reviewer-gate + supersession rules) together with
-/// its proof, mirroring a counterparty link, and the approve/reject transitions. Lives here
-/// (not in the controllers) so every revenue/cost/risk write flows through one set of rules.
-/// </summary>
+// Centralizes contribution writes, proof, mirrored links, and review transitions so every source type
+// follows the same approval and supersession rules.
 public interface IContributionWriter
 {
-    // Create or update the source row for the active node, returning its id. Null when the
-    // classification can't be parsed, or an existing-row id pointed at no row.
-    // The proof rides along on the row: <paramref name="reference"/> is WHERE in the document it came
-    // from (SEC Item / note / subheading), <paramref name="evidence"/> the verbatim substring, and
-    // <paramref name="filingId"/> the filing both were taken from. Each is left untouched when null,
-    // so an edit that omits proof keeps the citation already on record.
+    // Creates or updates the active source and returns its ID. Invalid classifications return null;
+    // omitted proof fields preserve the existing citation.
     long? UpsertRow(ExtractionNode node, long companyId, long? rowId, string classification,
         string name, double? value, double? percentage, string? note, long? relatedCompanyId, Contributor by,
         string? reference = null, string? evidence = null, long? filingId = null);
@@ -44,8 +35,7 @@ public class ContributionWriter(
     IRevenueSourceRepository revenue, ICostSourceRepository cost, ICompanyRiskRepository risks)
     : IContributionWriter
 {
-    // The proof a write carries: where in the document, the verbatim quote, and the filing both came
-    // from. Bundled so the three per-node upserts don't each grow three more parameters.
+    // Bundles the proof location, quote, and filing so node-specific upserts share one parameter.
     private readonly record struct Proof(string? Reference, string? Evidence, long? FilingId);
 
     public long? UpsertRow(ExtractionNode node, long companyId, long? rowId, string classification,
@@ -69,8 +59,7 @@ public class ContributionWriter(
         {
             var existing = revenue.GetById(id);
             if (existing is null) return null;
-            // Non-reviewer edit: leave the live row untouched and propose a superseding Pending copy
-            // (approved on review -> the old row is soft-deleted). Reviewers edit in place.
+            // Non-reviewers propose a pending replacement; approval later retires the live row.
             if (!by.IsReviewer)
             {
                 var proposal = new RevenueSource(sourceType, name, companyId)
@@ -191,8 +180,7 @@ public class ContributionWriter(
         return row.Id;
     }
 
-    // Write each proof part onto the row it belongs to, skipping the ones the caller omitted — an
-    // edit that sends no citation keeps the one already on record.
+    // Applies only supplied proof fields so an edit without a citation preserves the existing one.
     private static void ApplyProof(Proof proof, Action<string> setReference, Action<string> setEvidence,
         Action<long> setFilingId)
     {
@@ -237,8 +225,8 @@ public class ContributionWriter(
         }
     }
 
-    // A proposed edit soft-deletes the live row it supersedes, then the pending row flips Approved and
-    // goes public. Non-pending ids are skipped, so a double-submit is idempotent.
+    // Approval retires the superseded row and publishes the pending replacement. Ignoring non-pending
+    // IDs keeps repeated submissions safe.
     private static void Approve<T>(
         IEnumerable<long> ids, Func<long, T?> getById, Action<long> softDelete, Action<T> update)
         where T : IContribution
@@ -252,9 +240,7 @@ public class ContributionWriter(
             }
     }
 
-    // Mark a pending row Rejected so it leaves both the public app (reads filter Approved) and the
-    // review queue (reads filter Pending). The live row a rejected edit targeted is left untouched —
-    // nothing was ever swapped.
+    // Rejection removes a proposal from the review queue without changing the live row it targeted.
     private static void Reject<T>(IEnumerable<long> ids, Func<long, T?> getById, Action<T> update)
         where T : IContribution
     {
