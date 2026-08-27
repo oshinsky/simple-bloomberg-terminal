@@ -47,7 +47,7 @@ public class CostSourcesController : Controller
     public IActionResult Create(CostSourceCreateModel model)
     {
         if (!ModelState.IsValid) { PopulateDropdowns(); return View(model); }
-        var entity = new CostSource(model.CostBase, model.Name, model.CompanyId)
+        var entity = new CostSource(model.Name, model.CompanyId)
         {
             Value = model.Value,
             Percentage = model.Percentage,
@@ -77,7 +77,6 @@ public class CostSourcesController : Controller
         var model = ToEditModel(entity);
         var ok = await TryUpdateModelAsync(model);
         if (!ok || !ModelState.IsValid) { PopulateDropdowns(); ViewBag.CompanyLabel = entity.Company?.Name; ViewBag.RelatedCompanyLabel = entity.RelatedCompany?.Name; return View("Edit", model); }
-        entity.CostBase = model.CostBase;
         entity.Name = model.Name;
         entity.Value = model.Value;
         entity.Percentage = model.Percentage;
@@ -100,8 +99,6 @@ public class CostSourcesController : Controller
 
     private void PopulateDropdowns()
     {
-        ViewBag.CostBases = Enum.GetValues<CostBase>()
-            .Select(t => new SelectListItem(t.ToString(), t.ToString())).ToList();
         ViewBag.DataSources = Enum.GetValues<DataSource>()
             .Select(t => new SelectListItem(t.ToString(), t.ToString())).ToList();
     }
@@ -109,7 +106,6 @@ public class CostSourcesController : Controller
     private static CostSourceEditModel ToEditModel(CostSource c) => new()
     {
         Id = c.Id,
-        CostBase = c.CostBase,
         Name = c.Name,
         Value = c.Value,
         Percentage = c.Percentage,

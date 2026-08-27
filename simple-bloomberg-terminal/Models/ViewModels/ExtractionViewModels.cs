@@ -37,9 +37,8 @@ public class ReferenceRequest
     public string? Node { get; set; }
 
     // Left-cell values (written back to the source row, source of truth for the numbers).
-    // Enums arrive as their string names from the browser (System.Text.Json web defaults bind
-    // enums as numbers, so the controller parses these by name) — see ExtractionController.
-    public string Classification { get; set; } = string.Empty;
+    // RiskScope arrives by string name from the browser; the controller parses it by name.
+    public string? Classification { get; set; } // RISK scope only
     public string Name { get; set; } = string.Empty;
     public double? Value { get; set; }
     public double? Percentage { get; set; }
@@ -95,7 +94,7 @@ public class SaveRequest
     public long CompanyId { get; set; }
     public long? SourceId { get; set; }   // bound row id for the active node; null => new row
     public string? Node { get; set; }
-    public string Classification { get; set; } = string.Empty;
+    public string? Classification { get; set; } // RISK scope only
     public string Name { get; set; } = string.Empty;
     public double? Value { get; set; }
     public double? Percentage { get; set; }
@@ -135,7 +134,7 @@ public class SaveBatchRequest
 public class SaveBatchItem
 {
     public string Name { get; set; } = string.Empty;
-    public string Classification { get; set; } = string.Empty;
+    public string? Classification { get; set; } // RISK scope only
     public double? Value { get; set; }
     public double? Percentage { get; set; }
     public string? Note { get; set; }
@@ -154,13 +153,13 @@ public class SaveBatchItem
 /// <summary>
 /// One counterparty the web-search model (Perplexity sonar) proposed for a specific business
 /// <see cref="Segment"/> of a company: a named supplier or customer, where it would attach
-/// (CUSTOMER => revenue source, SUPPLIER => cost source), the per-node classification, a one-line
+/// (CUSTOMER => revenue source, SUPPLIER => cost source), a one-line
 /// note and a citation URL. Nothing is persisted until the user confirms via link-counterparty.
 /// <see cref="ExistingCompanyId"/> is set when the name already matches a <c>Company</c> row, so the
 /// page can show "link" vs "create + link".
 /// </summary>
 public record CounterpartySuggestion(
-    string Name, string Side, string Segment, string Classification, string? Note, string? SourceUrl,
+    string Name, string Side, string Segment, string? Note, string? SourceUrl,
     string? CountryCode, string? Sector, string? Ticker, long? ExistingCompanyId,
     // Estimated USD value of the relationship/contract — only populated in "valued" discovery mode
     // (the BIGGEST-counterparties button); null otherwise.
@@ -213,7 +212,6 @@ public class LinkCounterpartyRequest
     public long CompanyId { get; set; }
     public string Name { get; set; } = string.Empty;
     public string Side { get; set; } = "CUSTOMER";          // CUSTOMER => revenue, SUPPLIER => cost
-    public string Classification { get; set; } = string.Empty; // SourceType (rev) or CostBase (cost) name
     public long? ExistingCompanyId { get; set; }
     public string? CountryCode { get; set; }
     public string? Sector { get; set; }

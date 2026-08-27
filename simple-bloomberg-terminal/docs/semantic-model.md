@@ -163,7 +163,6 @@ Weekly trading-volume time series per Company, backfilled from Yahoo Finance's c
 | Id | long | PK |
 | CompanyId | long | FK → Companies (owner) |
 | RelatedCompanyId | long? | FK → Companies (counterparty) |
-| SourceType | SourceType | CUSTOMER, SEGMENT, REGION, PRODUCT |
 | Name | string | |
 | Value | double? | |
 | Percentage | double? | |
@@ -182,7 +181,6 @@ Weekly trading-volume time series per Company, backfilled from Yahoo Finance's c
 | Id | long | PK |
 | CompanyId | long | FK → Companies (owner) |
 | RelatedCompanyId | long? | FK → Companies (counterparty) |
-| CostBase | CostBase | COGS, OPEX, TOTAL_COSTS |
 | Name | string | |
 | Value | double? | |
 | Percentage | double? | |
@@ -376,8 +374,6 @@ AppUser ──────────────── CompanyRisk        (1:N
 | GicsIndustry | SOFTWARE, AUTOMOBILES, SEMICONDUCTORS…, … (74 total); each value rolls up to one Sector |
 | GicsSubIndustry | GICS 2023 sub-industry (163 total); each value rolls up to exactly one GicsIndustry via `GicsSubIndustryExtensions.GetIndustry()` (and one Sector via `.GetSector()`) |
 | EventType | EARNINGS, CENTRAL_BANK, MACRO_DATA, TRADE_DEAL, SANCTIONS, … |
-| SourceType | CUSTOMER, SEGMENT, REGION, PRODUCT |
-| CostBase | COGS, OPEX, TOTAL_COSTS |
 | DataSource | EDGAR, MANUAL, CLAUDE_ESTIMATED, OPENBB, FMP, YAHOO |
 | FiscalPeriod | FY, Q1, Q2, Q3, Q4 |
 | RiskScope | MACROECONOMIC, INDUSTRY, BUSINESS, LEGAL_REGULATORY, FINANCIAL, GENERAL |

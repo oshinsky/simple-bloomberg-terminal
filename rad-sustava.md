@@ -360,10 +360,10 @@ zajedničke vanjske strukture parsiranje odgovora dijeli se među čvorovima.
 
 Prompt sadrži tri ograničenja koja proizlaze iz svojstava modela. Prvo, model smije vratiti samo ono
 što je potkrijepljeno u zadanom odsječku, bez oslanjanja na vlastito predznanje o društvu. Time se
-suzbija generiranje sadržaja koji u dokumentu ne postoji [16]. Drugo, klasifikacija mora biti točno
-jedna vrijednost iz zadanog šifrarnika. Šifrarnici su `CUSTOMER`, `SEGMENT`, `REGION` i `PRODUCT` za
-prihod, `COGS`, `OPEX` i `TOTAL_COSTS` za trošak te `MACROECONOMIC`, `INDUSTRY`, `BUSINESS`,
-`LEGAL_REGULATORY`, `FINANCIAL` i `GENERAL` za rizik. Treće, za svako popunjeno polje model mora
+suzbija generiranje sadržaja koji u dokumentu ne postoji [16]. Drugo, samo klasifikacija rizika mora
+biti jedna vrijednost iz šifrarnika `MACROECONOMIC`, `INDUSTRY`, `BUSINESS`, `LEGAL_REGULATORY`,
+`FINANCIAL` i `GENERAL`. Uloga prihoda i troška proizlazi iz čvora: prihod je kupac, a trošak
+dobavljač. Treće, za svako popunjeno polje model mora
 vratiti doslovan isječak izvornog teksta iz kojeg je vrijednost preuzeta. Prazno polje nema isječak.
 
 Zahtjev za doslovnim isječkom mijenja narav izlaza. Vrijednost više nije samo tvrdnja modela, nego
@@ -486,10 +486,10 @@ tagirane vrijednosti ne rješava se automatski, nego se označava i prepušta ko
 Zapis se ne upisuje sam. Kada korisnik potvrdi stavku, agent ispisuje blok za pohranu zadane sheme.
 
 ```json
-{"name":"","classification":"COGS","value":null,"percentage":null,
+{"name":"","value":null,"percentage":null,
  "related_company":null,"related_company_ticker":null,"reference":null,
  "proof":{"name":"","value":null,"percentage":null,
-          "classification":null,"related_company":null}}
+          "related_company":null}}
 ```
 
 Isječak programskog koda 11. Blok za pohranu zapisa o trošku.
@@ -554,14 +554,13 @@ milijunima, uz napomenu iznad tablice. Model tu napomenu vidi zajedno s brojem, 
 vrati apsolutni iznos u dolarima. Postotak se traži u rasponu od nula do sto. Podatak koji nije
 naveden vraća se kao prazan, a ne kao nula.
 
-Tipizacija i provjera pripadnosti šifrarniku ostaju u kodu. Vrijednost klasifikacije koju je model
-vratio pokušava se pretvoriti u pripadajući nabrojeni tip. Neuspjeh znači da se zapis ne pohranjuje.
+Za prihod i trošak pohranjuju se podaci iz dokumenta bez dodatne klasifikacije. Samo se opseg rizika
+tipizira i provjerava prema pripadajućem šifrarniku.
 
 ```csharp
-private long? UpsertRevenue(long companyId, long? rowId, string classification, string name,
+private long? UpsertRevenue(long companyId, long? rowId, string name,
     double? value, double? percentage, long? relatedCompanyId, string? reference, Contributor by)
 {
-    if (!Enum.TryParse<SourceType>(classification, out var sourceType)) return null;
     ...
 }
 ```
@@ -569,8 +568,7 @@ private long? UpsertRevenue(long companyId, long? rowId, string classification, 
 Isječak programskog koda 13. Provjera klasifikacije prije pohrane.
 
 Podjela slijedi iz prirode zadataka. Skala i valuta ovise o kontekstu u dokumentu, koji vidi samo
-model. Pripadnost šifrarniku ne ovisi o dokumentu i mora vrijediti bezuvjetno, pa se ne prepušta
-modelu. Prompt traži vrijednost iz šifrarnika, ali ta se tvrdnja ne uzima na riječ.
+model. Za prihod i trošak nema dodatnog šifrarnika; smjer je već određen odabranim čvorom.
 
 Brojčane vrijednosti čitaju se tolerantno. Model iznos može vratiti kao broj ili kao niz znakova, a
 oba oblika se prihvaćaju.

@@ -144,7 +144,7 @@ public class CounterpartyMeasurementService
             var fastWorkerClaims = (scanned.WorkerClaims ?? [])
                 .Select(finding => new CounterpartyClaim(
                     finding.RelatedCompany ?? finding.Name,
-                    finding.Classification,
+                    node == ExtractionNode.COST ? "SUPPLIER" : "CUSTOMER",
                     finding.Note,
                     finding.Evidence,
                     finding.Section))

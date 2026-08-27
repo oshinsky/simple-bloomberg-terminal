@@ -1,13 +1,12 @@
 @using simple_bloomberg_terminal.Models.Entities
 @model IEnumerable<RevenueSource>
 
-@if (!Model.Any()) { <tr><td colspan="6" class="muted-cell" style="text-align:center; padding:1rem;">No results</td></tr> }
+@if (!Model.Any()) { <tr><td colspan="5" class="muted-cell" style="text-align:center; padding:1rem;">No results</td></tr> }
 @foreach (var r in Model)
 {
     <tr>
         <td class="name-cell">@(r.Company?.Name ?? r.CompanyId.ToString())</td>
         <td class="tag-cell">@r.Name</td>
-        <td class="tag-cell">@r.SourceType</td>
         <td class="num-cell">@(r.Value.HasValue ? $"${r.Value.Value / 1e9:F2}B" : "—")</td>
         <td class="num-cell">@(r.Percentage.HasValue ? $"{r.Percentage.Value:F1}%" : "—")</td>
         <td style="text-align:right; white-space:nowrap;">

@@ -38,8 +38,8 @@ Primary SEC filing document
                     /                 \
                    v                   v
        ExtractionChatService   CounterpartyMeasurementService
-       conversation and saves  repeated COST runs, artifacts,
-                               structured ledger, and scoring
+       conversation and saves  repeated supplier-counterparty
+                               runs, artifacts, ledger, and scoring
 ```
 
 Chat and measurement are sibling consumers. Measurement does not call `ExtractionChatService`.

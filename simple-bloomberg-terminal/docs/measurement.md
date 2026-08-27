@@ -70,9 +70,8 @@ Concurrency ceiling: 10 runs × 6-wide workers = 60 simultaneous fast calls, aga
 `classification ∈ {COGS, OPEX, TOTAL_COSTS}` — an accounting judgement the filing never states, so
 nothing in the text can back it and evidence presence is undefined for that field. The unit is now a named
 counterparty: `counterparty`, `direction ∈ {SUPPLIER, CUSTOMER, PARTNER}`, `what`, `evidence`.
-Every field is a fact printed on the page, so every field is checkable. The accounting
-bucket is now derived at save time (`SUPPLIER → COGS`), which is what the existing save paths already
-defaulted to.
+Every field is a fact printed on the page, so every field is checkable. Revenue/cost classifications
+are not stored; customer/supplier direction is derived from the source table.
 
 **2. LLM heading triage removed.** A model call used to read the heading titles and choose which
 sections to scan, so two runs of the "same" extraction were not reading the same text. Section

@@ -17,9 +17,9 @@ public readonly record struct Contributor(bool IsReviewer, string? UserId)
 // follows the same approval and supersession rules.
 public interface IContributionWriter
 {
-    // Creates or updates the active source and returns its ID. Invalid classifications return null;
-    // omitted proof fields preserve the existing citation.
-    long? UpsertRow(ExtractionNode node, long companyId, long? rowId, string classification,
+    // Creates or updates the active source and returns its ID. Classification is used only for risks;
+    // revenue/cost direction is carried by the node itself. Omitted proof fields preserve the citation.
+    long? UpsertRow(ExtractionNode node, long companyId, long? rowId, string? classification,
         string name, double? value, double? percentage, string? note, long? relatedCompanyId, Contributor by,
         string? reference = null, string? evidence = null, long? filingId = null);
 
@@ -38,23 +38,22 @@ public class ContributionWriter(
     // Bundles the proof location, quote, and filing so node-specific upserts share one parameter.
     private readonly record struct Proof(string? Reference, string? Evidence, long? FilingId);
 
-    public long? UpsertRow(ExtractionNode node, long companyId, long? rowId, string classification,
+    public long? UpsertRow(ExtractionNode node, long companyId, long? rowId, string? classification,
         string name, double? value, double? percentage, string? note, long? relatedCompanyId, Contributor by,
         string? reference = null, string? evidence = null, long? filingId = null)
     {
         var proof = new Proof(reference, evidence, filingId);
         return node switch
         {
-            ExtractionNode.COST => UpsertCost(companyId, rowId, classification, name, value, percentage, relatedCompanyId, proof, by),
+            ExtractionNode.COST => UpsertCost(companyId, rowId, name, value, percentage, relatedCompanyId, proof, by),
             ExtractionNode.RISK => UpsertRisk(companyId, rowId, classification, name, note, proof, by),
-            _                   => UpsertRevenue(companyId, rowId, classification, name, value, percentage, relatedCompanyId, proof, by),
+            _                   => UpsertRevenue(companyId, rowId, name, value, percentage, relatedCompanyId, proof, by),
         };
     }
 
-    private long? UpsertRevenue(long companyId, long? rowId, string classification, string name,
+    private long? UpsertRevenue(long companyId, long? rowId, string name,
         double? value, double? percentage, long? relatedCompanyId, Proof proof, Contributor by)
     {
-        if (!Enum.TryParse<SourceType>(classification, out var sourceType)) return null;
         if (rowId is { } id)
         {
             var existing = revenue.GetById(id);
@@ -62,7 +61,7 @@ public class ContributionWriter(
             // Non-reviewers propose a pending replacement; approval later retires the live row.
             if (!by.IsReviewer)
             {
-                var proposal = new RevenueSource(sourceType, name, companyId)
+                var proposal = new RevenueSource(name, companyId)
                 {
                     Value = value, Percentage = percentage, RelatedCompanyId = relatedCompanyId,
                     Reference = proof.Reference ?? existing.Reference,
@@ -76,7 +75,6 @@ public class ContributionWriter(
                 revenue.Add(proposal);
                 return proposal.Id;
             }
-            existing.SourceType = sourceType;
             existing.Name = name;
             existing.Value = value;
             existing.Percentage = percentage;
@@ -85,7 +83,7 @@ public class ContributionWriter(
             revenue.Update(existing);
             return existing.Id;
         }
-        var row = new RevenueSource(sourceType, name, companyId)
+        var row = new RevenueSource(name, companyId)
         {
             Value = value, Percentage = percentage, RelatedCompanyId = relatedCompanyId,
             Reference = proof.Reference, Evidence = proof.Evidence, FilingId = proof.FilingId,
@@ -97,10 +95,9 @@ public class ContributionWriter(
         return row.Id;
     }
 
-    private long? UpsertCost(long companyId, long? rowId, string classification, string name,
+    private long? UpsertCost(long companyId, long? rowId, string name,
         double? value, double? percentage, long? relatedCompanyId, Proof proof, Contributor by)
     {
-        if (!Enum.TryParse<CostBase>(classification, out var costBase)) return null;
         if (rowId is { } id)
         {
             var existing = cost.GetById(id);
@@ -108,7 +105,7 @@ public class ContributionWriter(
             // Non-reviewer edit: propose a superseding Pending copy, leave the live row untouched.
             if (!by.IsReviewer)
             {
-                var proposal = new CostSource(costBase, name, companyId)
+                var proposal = new CostSource(name, companyId)
                 {
                     Value = value, Percentage = percentage, RelatedCompanyId = relatedCompanyId,
                     Reference = proof.Reference ?? existing.Reference,
@@ -122,7 +119,6 @@ public class ContributionWriter(
                 cost.Add(proposal);
                 return proposal.Id;
             }
-            existing.CostBase = costBase;
             existing.Name = name;
             existing.Value = value;
             existing.Percentage = percentage;
@@ -131,7 +127,7 @@ public class ContributionWriter(
             cost.Update(existing);
             return existing.Id;
         }
-        var row = new CostSource(costBase, name, companyId)
+        var row = new CostSource(name, companyId)
         {
             Value = value, Percentage = percentage, RelatedCompanyId = relatedCompanyId,
             Reference = proof.Reference, Evidence = proof.Evidence, FilingId = proof.FilingId,
@@ -143,7 +139,7 @@ public class ContributionWriter(
         return row.Id;
     }
 
-    private long? UpsertRisk(long companyId, long? rowId, string classification, string name, string? note, Proof proof, Contributor by)
+    private long? UpsertRisk(long companyId, long? rowId, string? classification, string name, string? note, Proof proof, Contributor by)
     {
         if (!Enum.TryParse<RiskScope>(classification, out var scope)) return null;
         if (rowId is { } id)
@@ -198,16 +194,14 @@ public class ContributionWriter(
     public void EnsureReciprocal(ExtractionNode node, long counterpartyId, long ownerId, string ownerName,
         double? value, Contributor by)
     {
-        var (mirror, classification) = node == ExtractionNode.COST
-            ? (ExtractionNode.REVENUE, nameof(SourceType.CUSTOMER))
-            : (ExtractionNode.COST, nameof(CostBase.COGS));
+        var mirror = node == ExtractionNode.COST ? ExtractionNode.REVENUE : ExtractionNode.COST;
 
         var exists = mirror == ExtractionNode.COST
             ? cost.HasRelatedCompany(counterpartyId, ownerId)
             : revenue.HasRelatedCompany(counterpartyId, ownerId);
         if (exists) return;
 
-        UpsertRow(mirror, counterpartyId, null, classification, ownerName,
+        UpsertRow(mirror, counterpartyId, null, null, ownerName,
             value: value, percentage: null, note: null, relatedCompanyId: ownerId, by);
     }
 

@@ -44,7 +44,6 @@ public class RevenueSourceTests : ApiTestBase
     {
         var body = new
         {
-            sourceType = SourceType.PRODUCT,
             name = "Devices",
             companyId = MicrosoftId,
             value = 50_000_000_000d,
@@ -63,7 +62,7 @@ public class RevenueSourceTests : ApiTestBase
     [Fact]
     public async Task Create_MissingRequired_Returns400()
     {
-        var body = new { sourceType = SourceType.PRODUCT, value = 1_000d }; // missing Name + CompanyId
+        var body = new { value = 1_000d }; // missing Name + CompanyId
 
         var resp = await Client.PostAsJsonAsync("/api/revenuesources", body);
 
@@ -73,7 +72,7 @@ public class RevenueSourceTests : ApiTestBase
     [Fact]
     public async Task Update_Existing_Returns200_WithChangedFields()
     {
-        var body = new { sourceType = SourceType.SEGMENT, name = "Cloud & AI", companyId = MicrosoftId };
+        var body = new { name = "Cloud & AI", companyId = MicrosoftId };
 
         var resp = await Client.PutAsJsonAsync($"/api/revenuesources/{RevenueSourceId}", body);
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
@@ -85,7 +84,7 @@ public class RevenueSourceTests : ApiTestBase
     [Fact]
     public async Task Update_Missing_Returns404()
     {
-        var body = new { sourceType = SourceType.SEGMENT, name = "Ghost", companyId = MicrosoftId };
+        var body = new { name = "Ghost", companyId = MicrosoftId };
 
         var resp = await Client.PutAsJsonAsync($"/api/revenuesources/{MissingId}", body);
 

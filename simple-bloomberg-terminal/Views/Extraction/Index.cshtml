@@ -35,9 +35,9 @@
             </select>
         </div>
 
-        <div class="cell-row">
-            <label class="ext-field-label" id="classLabel">Classification</label>
-            <select id="f_sourceType" asp-items="ViewBag.SourceTypes" class="form-control"></select>
+        <div class="cell-row" id="classRow">
+            <label class="ext-field-label" id="classLabel">Scope</label>
+            <select id="f_sourceType" class="form-control"></select>
         </div>
         <div class="cell-row">
             <label class="ext-field-label">Name</label>
@@ -350,7 +350,7 @@
     const NODE_LABEL = { REVENUE: 'Revenue', COST: 'Cost', RISK: 'Risk' };
     const isRisk = () => node === 'RISK';
 
-    // Repopulate the classification dropdown with the active node's enum values.
+    // Risk alone retains a classification dropdown; revenue/cost direction comes from the node.
     function rebuildClassOptions() {
         const opts = (nodeCfg.classes && nodeCfg.classes[node]) || [];
         const sel = $('f_sourceType');
@@ -364,7 +364,7 @@
     // Reflect the current node in the page chrome: title, label, which cells show, load-button text.
     function applyNode() {
         $('nodeTitle').textContent = NODE_LABEL[node] || node;
-        $('classLabel').textContent = isRisk() ? 'Scope' : 'Classification';
+        $('classRow').hidden = !isRisk();
         rebuildClassOptions();
         $('valueRow').hidden = isRisk();
         $('pctRow').hidden = isRisk();
@@ -504,8 +504,7 @@
     }
 
     function fillCells(r) {
-        // The classification field is named differently per node in the DTO (sourceType/costBase/scope).
-        const cls = r ? (r.classification ?? r.sourceType ?? r.costBase ?? r.scope) : null;
+        const cls = r ? (r.classification ?? r.scope) : null;
         $('f_sourceType').value = cls != null ? cls : ($('f_sourceType').options[0]?.value ?? '');
         $('f_name').value = r ? (r.name ?? '') : '';
         $('f_value').value = r && r.value != null ? r.value : '';
@@ -632,7 +631,7 @@
             companyId: id,
             sourceId: currentRowId,
             node,
-            classification: $('f_sourceType').value,
+            classification: isRisk() ? $('f_sourceType').value : null,
             name: $('f_name').value,
             value: numOrNull($('f_value').value),
             percentage: numOrNull($('f_percentage').value),

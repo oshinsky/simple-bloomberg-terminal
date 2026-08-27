@@ -122,9 +122,9 @@ public sealed class StockTools(TerminalClient terminal)
         if (c is null) return new RelationshipsResult("not_found", $"No company with id {companyId} is tracked.", [], []);
 
         var revenue = (c.RevenueSources ?? []).Select(r =>
-            new Counterparty(r.SourceType.ToString(), r.Name, r.Value, r.Percentage, r.RelatedCompanyId)).ToList();
+            new Counterparty("CUSTOMER", r.Name, r.Value, r.Percentage, r.RelatedCompanyId)).ToList();
         var costs = (c.CostSources ?? []).Select(r =>
-            new Counterparty(r.CostBase.ToString(), r.Name, r.Value, r.Percentage, r.RelatedCompanyId)).ToList();
+            new Counterparty("SUPPLIER", r.Name, r.Value, r.Percentage, r.RelatedCompanyId)).ToList();
 
         if (revenue.Count == 0 && costs.Count == 0)
             return new RelationshipsResult("missing", "No revenue or cost sources are recorded for this company.", [], []);

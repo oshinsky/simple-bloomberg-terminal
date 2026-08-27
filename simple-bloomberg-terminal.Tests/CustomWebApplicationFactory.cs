@@ -119,7 +119,7 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
         db.SaveChanges();
 
         // Revenue source on Microsoft -> blocks its deletion (business rule).
-        db.RevenueSources.Add(new RevenueSource(SourceType.SEGMENT, "Cloud", microsoft.Id)
+        db.RevenueSources.Add(new RevenueSource("Cloud", microsoft.Id)
             { Value = 100_000_000_000, DataSource = DataSource.MANUAL });
 
         var evt = new Event("Apple Q4 Earnings", EventType.EARNINGS, new DateTime(2024, 11, 1))

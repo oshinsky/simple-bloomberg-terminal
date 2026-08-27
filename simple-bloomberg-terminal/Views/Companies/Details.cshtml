@@ -347,7 +347,6 @@
                     <thead>
                         <tr>
                             <th>Title</th>
-                            <th>Type</th>
                             <th>Date</th>
                             <th>Impact</th>
                             <th></th>
@@ -428,7 +427,6 @@
                                Skip only EDGAR period-totals since those aren't real business segments. *@
                             <tr data-segment="@(r.DataSource != DataSource.EDGAR ? r.Name : null)">
                                 <td class="name-cell">@r.Name</td>
-                                <td class="tag-cell">@r.SourceType</td>
                                 <td class="num-cell">@(r.Value.HasValue ? "$" + (r.Value.Value / 1e9).ToString("F2") + "B" : "—")</td>
                                 <td class="num-cell">@(r.Percentage.HasValue ? r.Percentage.Value.ToString("F1") + "%" : "—")</td>
                                 <td class="tag-cell">@(r.DataSource?.ToString() ?? "—")</td>
@@ -500,7 +498,6 @@
                     <thead>
                         <tr>
                             <th>Name</th>
-                            <th>Cost base</th>
                             <th>Value</th>
                             <th>%</th>
                             <th>Source</th>
@@ -517,7 +514,6 @@
                                Skip only EDGAR period-totals since those aren't real business segments. *@
                             <tr data-segment="@(c.DataSource != DataSource.EDGAR ? c.Name : null)">
                                 <td class="name-cell">@c.Name</td>
-                                <td class="tag-cell">@c.CostBase</td>
                                 <td class="num-cell">@(c.Value.HasValue ? "$" + (c.Value.Value / 1e9).ToString("F2") + "B" : "—")</td>
                                 <td class="num-cell">@(c.Percentage.HasValue ? c.Percentage.Value.ToString("F1") + "%" : "—")</td>
                                 <td class="tag-cell">@(c.DataSource?.ToString() ?? "—")</td>
@@ -1043,7 +1039,7 @@ window.refreshCompanyProfile = async function (companyId) {
 
             const table = document.createElement('table');
             table.className = 'terminal-table';
-            table.innerHTML = `<thead><tr><th>Company</th><th>Class</th><th>Value</th><th>Note</th><th>Source</th><th></th></tr></thead>`;
+            table.innerHTML = `<thead><tr><th>Company</th><th>Role</th><th>Value</th><th>Note</th><th>Source</th><th></th></tr></thead>`;
             tbody = document.createElement('tbody');
             table.appendChild(tbody);
             results.appendChild(table);
@@ -1055,7 +1051,7 @@ window.refreshCompanyProfile = async function (companyId) {
         const known = s.existingCompanyId ? ' <span class="tag-cell">(known)</span>' : '';
         tr.innerHTML =
             `<td class="name-cell">${esc(s.name)}${known}</td>` +
-            `<td class="tag-cell">${esc(s.classification)}</td>` +
+            `<td class="tag-cell">${esc(s.side)}</td>` +
             `<td class="num-cell">${fmtVal(s.contractValue)}</td>` +
             `<td class="muted-cell">${esc(s.note || '—')}</td>` +
             `<td class="muted-cell">${src}</td>`;
@@ -1084,7 +1080,6 @@ window.refreshCompanyProfile = async function (companyId) {
                     companyId,
                     name: s.name,
                     side: s.side,
-                    classification: s.classification,
                     existingCompanyId: s.existingCompanyId ?? null,
                     countryCode: s.countryCode ?? null,
                     sector: s.sector ?? null,

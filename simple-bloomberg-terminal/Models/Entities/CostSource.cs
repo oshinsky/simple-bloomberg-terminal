@@ -6,16 +6,14 @@ namespace simple_bloomberg_terminal.Models.Entities;
 
 public class CostSource : IContribution
 {
-    public CostSource(CostBase costBase, string name, long companyId)
+    public CostSource(string name, long companyId)
     {
-        CostBase = costBase;
         Name = name;
         CompanyId = companyId;
     }
 
     [Key]
     public long Id { get; set; }
-    public CostBase CostBase { get; set; }
     public string Name { get; set; }
     public double? Value { get; set; }
     public double? Percentage { get; set; }

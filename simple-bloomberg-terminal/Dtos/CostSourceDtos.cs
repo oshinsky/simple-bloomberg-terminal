@@ -5,7 +5,6 @@ namespace simple_bloomberg_terminal.Dtos;
 
 public record CostSourceDto(
     long Id,
-    CostBase CostBase,
     string Name,
     double? Value,
     double? Percentage,
@@ -15,7 +14,6 @@ public record CostSourceDto(
 
 public record CostSourceRequestDto
 {
-    public CostBase CostBase { get; init; }
     [Required] public string Name { get; init; } = string.Empty;
     [Required] public long? CompanyId { get; init; }
     public double? Value { get; init; }

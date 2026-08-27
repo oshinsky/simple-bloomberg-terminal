@@ -44,7 +44,6 @@ podneska stvara N zapisa s istim `FilingId`, a svaki nosi vlastiti `Reference` i
 | Stupac | Tip | Null | Napomena |
 |---|---|---|---|
 | Id | long | ne | PK |
-| SourceType | SourceType | ne | šifrarnik klasifikacije |
 | Name | string | ne | naziv stavke, segmenta ili proizvoda |
 | Value | double | da | iznos u USD |
 | Percentage | double | da | udio u ukupnom prihodu, 0–100 |
@@ -68,7 +67,6 @@ Struktura je istovjetna `RevenueSource`; razlikuje se samo šifrarnik klasifikac
 | Stupac | Tip | Null | Napomena |
 |---|---|---|---|
 | Id | long | ne | PK |
-| CostBase | CostBase | ne | šifrarnik klasifikacije |
 | Name | string | ne | |
 | Value | double | da | iznos u USD |
 | Percentage | double | da | udio u ukupnom trošku, 0–100 |
@@ -171,8 +169,6 @@ koji ga citira.
 
 | Šifrarnik | Vrijednosti |
 |---|---|
-| SourceType | CUSTOMER, SEGMENT, REGION, PRODUCT |
-| CostBase | COGS, OPEX, TOTAL_COSTS |
 | RiskScope | MACROECONOMIC, INDUSTRY, BUSINESS, LEGAL_REGULATORY, FINANCIAL, GENERAL |
 | ContributionStatus | Approved (0), Pending, Rejected |
 | DataSource | EDGAR, MANUAL, CLAUDE_ESTIMATED, OPENBB, FMP, YAHOO |

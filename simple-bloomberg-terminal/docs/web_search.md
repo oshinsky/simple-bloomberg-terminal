@@ -38,8 +38,9 @@ Two buttons on the **company Details page** (`Views/Companies/Details.cshtml`), 
   └─ results render here, grouped by segment
 ```
 
-- **Revenue** side discovers **customers** (companies that buy) → become `RevenueSource` rows (`SourceType.CUSTOMER`).
-- **Cost** side discovers **suppliers** (companies it buys from) → become `CostSource` rows (`CostBase.COGS`).
+- **Revenue** side discovers **customers** (companies that buy) and creates `RevenueSource` rows.
+- **Cost** side discovers **suppliers** (companies it buys from) and creates `CostSource` rows.
+- Customer/supplier direction is derived from the source table; no separate classification is stored.
 
 ---
 

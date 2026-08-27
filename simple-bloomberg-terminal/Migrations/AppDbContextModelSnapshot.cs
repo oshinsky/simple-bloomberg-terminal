@@ -566,9 +566,6 @@ namespace simple_bloomberg_terminal.Migrations
                     b.Property<string>("ContributedByUserId")
                         .HasColumnType("varchar(255)");
 
-                    b.Property<int>("CostBase")
-                        .HasColumnType("int");
-
                     b.Property<int?>("DataSource")
                         .HasColumnType("int");
 
@@ -991,9 +988,6 @@ namespace simple_bloomberg_terminal.Migrations
 
                     b.Property<long?>("RelatedCompanyId")
                         .HasColumnType("bigint");
-
-                    b.Property<int>("SourceType")
-                        .HasColumnType("int");
 
                     b.Property<int>("Status")
                         .HasColumnType("int");

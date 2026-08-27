@@ -65,7 +65,7 @@ public class CounterpartyDiscoveryTests
     {
         var planner = Envelope("""{"queries":["Apple's biggest customers 2024"]}""");
         var search = Envelope(
-            """{"counterparties":[{"segment":"iPhone","name":"Microsoft","classification":"CUSTOMER","note":"Buys components [1]","ticker":"MSFT","country_code":"US","sector":"INFORMATION_TECHNOLOGY","source_url":"[1]"}]}""",
+            """{"counterparties":[{"segment":"iPhone","name":"Microsoft","note":"Buys components [1]","ticker":"MSFT","country_code":"US","sector":"INFORMATION_TECHNOLOGY","source_url":"[1]"}]}""",
             "https://example.com/msft");
         var handler = PlanThenSearch(planner, search);
 
@@ -113,7 +113,7 @@ public class CounterpartyDiscoveryTests
         var planner = Envelope("""{"queries":["q"]}""");
         // sonar-reasoning-pro shape: source_url null, the [n] marker lives in the note prose instead.
         var search = Envelope(
-            """{"counterparties":[{"segment":"Cloud","name":"Acme","classification":"CUSTOMER","note":"Long-term buyer [2]","source_url":null}]}""",
+            """{"counterparties":[{"segment":"Cloud","name":"Acme","note":"Long-term buyer [2]","source_url":null}]}""",
             "https://example.com/one", "https://example.com/two");
         var events = await Run(PlanThenSearch(planner, search), "CUSTOMER");
 
@@ -129,7 +129,7 @@ public class CounterpartyDiscoveryTests
         // finish_reason=length: the array was cut mid-stream — the first object completed but the outer
         // structure never closed. Parse appends "]}" to recover the complete object.
         var search = Envelope(
-            """{"counterparties":[{"segment":"iPhone","name":"Microsoft","classification":"CUSTOMER","note":"x","source_url":null}""");
+            """{"counterparties":[{"segment":"iPhone","name":"Microsoft","note":"x","source_url":null}""");
         var events = await Run(PlanThenSearch(planner, search), "CUSTOMER");
 
         var item = Assert.Single(Assert.Single(events, e => e.Type == "result").Items!);
@@ -141,7 +141,7 @@ public class CounterpartyDiscoveryTests
     {
         var planner = Envelope("""{"queries":["q"]}""");
         var search = Envelope(
-            """{"counterparties":[{"segment":"iPhone","name":"Microsoft","classification":"CUSTOMER","contract_value":2500000000,"source_url":null}]}""");
+            """{"counterparties":[{"segment":"iPhone","name":"Microsoft","contract_value":2500000000,"source_url":null}]}""");
         var events = await Run(PlanThenSearch(planner, search), "CUSTOMER", valued: true);
 
         var item = Assert.Single(Assert.Single(events, e => e.Type == "result").Items!);
@@ -155,7 +155,7 @@ public class CounterpartyDiscoveryTests
         // emitted by whichever search lands first and suppressed in the other — one item total.
         var planner = Envelope("""{"queries":["q1","q2"]}""");
         var search = Envelope(
-            """{"counterparties":[{"segment":"iPhone","name":"Microsoft","classification":"CUSTOMER","source_url":null}]}""");
+            """{"counterparties":[{"segment":"iPhone","name":"Microsoft","source_url":null}]}""");
         var events = await Run(PlanThenSearch(planner, search), "CUSTOMER");
 
         Assert.Equal(2, events.Count(e => e.Type == "searching"));

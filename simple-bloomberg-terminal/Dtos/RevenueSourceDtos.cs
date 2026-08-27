@@ -5,7 +5,6 @@ namespace simple_bloomberg_terminal.Dtos;
 
 public record RevenueSourceDto(
     long Id,
-    SourceType SourceType,
     string Name,
     double? Value,
     double? Percentage,
@@ -15,7 +14,6 @@ public record RevenueSourceDto(
 
 public record RevenueSourceRequestDto
 {
-    public SourceType SourceType { get; init; }
     [Required] public string Name { get; init; } = string.Empty;
     [Required] public long? CompanyId { get; init; }
     public double? Value { get; init; }

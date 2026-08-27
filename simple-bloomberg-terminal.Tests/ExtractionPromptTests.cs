@@ -10,7 +10,7 @@ public class ExtractionPromptTests
         var prompt = CounterpartyPrompts.FastWorkerSystemPrompt(ExtractionNode.REVENUE);
 
         Assert.Contains("REVENUE-SIDE", prompt);
-        Assert.Contains("classification to CUSTOMER", prompt);
+        Assert.DoesNotContain("classification", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Do not return business segments, products", prompt);
         Assert.Contains("no stated amount is valid", prompt);
         Assert.DoesNotContain("scale any", prompt, StringComparison.OrdinalIgnoreCase);
@@ -22,7 +22,7 @@ public class ExtractionPromptTests
         var prompt = CounterpartyPrompts.FastWorkerSystemPrompt(ExtractionNode.COST, strict: true);
 
         Assert.Contains("COST-SIDE", prompt);
-        Assert.Contains("classification to SUPPLIER", prompt);
+        Assert.DoesNotContain("classification", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("STRICT MODE", prompt);
     }
 

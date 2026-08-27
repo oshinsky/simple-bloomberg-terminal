@@ -99,7 +99,7 @@ public class RevenueSourcesController : Controller
     public IActionResult Create(RevenueSourceCreateModel model)
     {
         if (!ModelState.IsValid) { PopulateDropdowns(); return View(model); }
-        var entity = new RevenueSource(model.SourceType, model.Name, model.CompanyId)
+        var entity = new RevenueSource(model.Name, model.CompanyId)
         {
             Value = model.Value,
             Percentage = model.Percentage,
@@ -129,7 +129,6 @@ public class RevenueSourcesController : Controller
         var model = ToEditModel(entity);
         var ok = await TryUpdateModelAsync(model);
         if (!ok || !ModelState.IsValid) { PopulateDropdowns(); ViewBag.CompanyLabel = entity.Company?.Name; ViewBag.RelatedCompanyLabel = entity.RelatedCompany?.Name; return View("Edit", model); }
-        entity.SourceType = model.SourceType;
         entity.Name = model.Name;
         entity.Value = model.Value;
         entity.Percentage = model.Percentage;
@@ -153,14 +152,12 @@ public class RevenueSourcesController : Controller
 
     private void PopulateDropdowns()
     {
-        ViewBag.SourceTypes = EnumSelect.Of<SourceType>();
         ViewBag.DataSources = EnumSelect.Of<DataSource>();
     }
 
     private static RevenueSourceEditModel ToEditModel(RevenueSource r) => new()
     {
         Id = r.Id,
-        SourceType = r.SourceType,
         Name = r.Name,
         Value = r.Value,
         Percentage = r.Percentage,

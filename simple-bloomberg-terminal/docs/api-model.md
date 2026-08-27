@@ -3,7 +3,7 @@
 This doc answers one question: **which APIs best populate the company-to-company relationship edges** — who a company's biggest customers (revenue) and biggest cost sources / suppliers (cost) are.
 
 > Example target: *Apple's biggest cost source is TSMC.* That is one `CostSource` row:
-> `{ CompanyId = Apple, RelatedCompanyId = TSMC, CostBase = COGS, Name = "TSMC chip fabrication", Value/Percentage, DataSource = ? }`
+> `{ CompanyId = Apple, RelatedCompanyId = TSMC, Name = "TSMC chip fabrication", Value/Percentage, DataSource = ? }`
 
 Companion to `external-api.md` (which covers the macro/Country side). Here the focus is narrow: the `RelatedCompanyId` edges.
 

@@ -92,7 +92,7 @@ public class ContributionsController : Controller
 
         vm.Revenue = revenue.Select(r => new ContributionRow
         {
-            Type = "REVENUE", Id = r.Id, Classification = r.SourceType.ToString(), Name = r.Name,
+            Type = "REVENUE", Id = r.Id, Classification = "CUSTOMER", Name = r.Name,
             Value = r.Value, Percentage = r.Percentage, RelatedCompany = r.RelatedCompany?.Name,
             ContributorEmail = Email(r.ContributedByUserId),
             SupersedesId = r.SupersedesId,
@@ -103,7 +103,7 @@ public class ContributionsController : Controller
 
         vm.Cost = cost.Select(c => new ContributionRow
         {
-            Type = "COST", Id = c.Id, Classification = c.CostBase.ToString(), Name = c.Name,
+            Type = "COST", Id = c.Id, Classification = "SUPPLIER", Name = c.Name,
             Value = c.Value, Percentage = c.Percentage, RelatedCompany = c.RelatedCompany?.Name,
             ContributorEmail = Email(c.ContributedByUserId),
             SupersedesId = c.SupersedesId,

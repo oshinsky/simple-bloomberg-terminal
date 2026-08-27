@@ -121,7 +121,6 @@ public class ExtractionController : Controller
         {
             vm.SourceId = row.Id;
             vm.CompanyId = row.CompanyId;
-            vm.Classification = row.SourceType.ToString();
             vm.Name = row.Name;
             vm.Value = row.Value;
             vm.Percentage = row.Percentage;
@@ -132,14 +131,11 @@ public class ExtractionController : Controller
         if (vm.CompanyId is { } id)
             vm.CompanyLabel = _companies.GetById(id)?.Name;
 
-        // Classification option lists per node — the page swaps the dropdown when the node changes.
-        ViewBag.SourceTypes = EnumSelect.Of<SourceType>();
+        // Only risks retain an extracted classification: their scope.
         ViewBag.Nodes = EnumSelect.Of<ExtractionNode>();
-        // Classification options the page swaps between when the node changes.
+        // Revenue and cost derive their role from the node itself.
         ViewBag.ClassOptions = new Dictionary<string, string[]>
         {
-            ["REVENUE"] = Enum.GetNames<SourceType>(),
-            ["COST"] = Enum.GetNames<CostBase>(),
             ["RISK"] = Enum.GetNames<RiskScope>(),
         };
         return View(vm);
@@ -185,7 +181,7 @@ public class ExtractionController : Controller
         var rowId = _writer.UpsertRow(node, req.CompanyId, req.SourceId, req.Classification,
             req.Name, req.Value, req.Percentage, req.Note, req.RelatedCompanyId, By,
             req.Reference, req.Evidence, filingId);
-        if (rowId is null) return BadRequest("Could not save the row (check the classification value).");
+        if (rowId is null) return BadRequest("Could not save the row.");
 
         return Json(new ReferenceResult(rowId.Value));
     }
@@ -202,7 +198,7 @@ public class ExtractionController : Controller
         var rowId = _writer.UpsertRow(node, req.CompanyId, req.SourceId, req.Classification,
             req.Name, req.Value, req.Percentage, req.Note, req.RelatedCompanyId, By,
             req.Reference, req.Evidence, filingId);
-        if (rowId is null) return BadRequest("Could not save the row (check the classification value).");
+        if (rowId is null) return BadRequest("Could not save the row.");
 
         return Json(new { sourceId = rowId.Value, proof = !string.IsNullOrWhiteSpace(req.Evidence) });
     }
@@ -244,7 +240,6 @@ public class ExtractionController : Controller
                     CompanyId = req.CompanyId,
                     Name = item.RelatedCompany!.Trim(),
                     Side = node == ExtractionNode.COST ? "SUPPLIER" : "CUSTOMER",
-                    Classification = item.Classification,
                     Ticker = item.RelatedCompanyTicker,
                     Value = item.Value
                 };
@@ -260,7 +255,7 @@ public class ExtractionController : Controller
             var rowId = _writer.UpsertRow(node, req.CompanyId, null, item.Classification, item.Name,
                 item.Value, item.Percentage, item.Note, counterpartyId, By,
                 item.Reference, item.Evidence, filingId);
-            if (rowId is null) continue;   // unparseable classification — skip this item
+            if (rowId is null) continue;   // invalid risk scope — skip this item
             saved++;
 
             if (hasCounterparty && counterpartyId is { } cid)
@@ -711,15 +706,15 @@ public class ExtractionController : Controller
         // Sonar's citation URL is this row's Reference (where the claim came from) and its one-line
         // note the Evidence, so the web source behind the relationship is recorded on the row (and
         // shown on the company's Details page). No filing — this came from the web, not a filing.
-        var rowId = _writer.UpsertRow(node, req.CompanyId, null, req.Classification, req.Name,
+        var rowId = _writer.UpsertRow(node, req.CompanyId, null, null, req.Name,
             value: req.Value, percentage: null, note: null, relatedCompanyId: counterpartyId, By,
             reference: req.SourceUrl, evidence: req.Note);
-        if (rowId is null) return BadRequest("Could not create the link (check the classification value).");
+        if (rowId is null) return BadRequest("Could not create the link.");
 
         // The relationship is symmetric but stored as two one-sided rows: owner gets a row pointing at
         // the counterparty (above); the counterparty needs the mirror row pointing back at owner, or its
         // Details page shows nothing. Owner's revenue (counterparty is its CUSTOMER) -> counterparty's
-        // cost (owner is its supplier, COGS); owner's cost (counterparty is its supplier) ->
+        // cost (owner is its supplier); owner's cost (counterparty is its supplier) ->
         // counterparty's revenue (owner is its CUSTOMER).
         _writer.EnsureReciprocal(node, counterpartyId, req.CompanyId, owner.Name, req.Value, By);
 

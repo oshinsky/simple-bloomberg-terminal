@@ -679,10 +679,8 @@ document.addEventListener('submit', async e => {
     const SAVES_H_KEY = 'bbt.scanSavesH';   // user-dragged checklist height (px)
     const PANEL_W_KEY = 'bbt.scanPanelW';   // user-dragged chat-panel width (px)
     const editModal = $('scanEditModal'), editBody = $('scanEditBody'), editTitle = $('scanEditTitle');
-    // Classification options per node — mirror the extraction form's enum dropdowns.
+    // Only risk suggestions retain a classification (RiskScope).
     const CLASS_OPTS = {
-        REVENUE: ['CUSTOMER', 'SEGMENT', 'REGION', 'PRODUCT'],
-        COST: ['COGS', 'OPEX', 'TOTAL_COSTS'],
         RISK: ['MACROECONOMIC', 'INDUSTRY', 'BUSINESS', 'LEGAL_REGULATORY', 'FINANCIAL', 'GENERAL']
     };
 
@@ -1131,6 +1129,7 @@ document.addEventListener('submit', async e => {
         savesEl.style.height = (read(SAVES_H_KEY, 200)) + 'px';   // restore the dragged height
         const rows = items.map((s, i) => {
             const bits = [];
+            const role = job.node === 'COST' ? 'SUPPLIER' : job.node === 'REVENUE' ? 'CUSTOMER' : s.classification;
             if (s.value != null) bits.push('$' + Number(s.value).toLocaleString());
             if (s.percentage != null) bits.push(s.percentage + '%');
             const cp = s.relatedCompany
@@ -1144,7 +1143,7 @@ document.addEventListener('submit', async e => {
                 <input type="checkbox" data-save="${i}" ${saveSel.has(s.key) ? 'checked' : ''}>
                 <span class="scan-notify-save-main" data-edit="${i}" title="Click to edit">
                     <span class="scan-notify-save-name">${escapeHtml(s.name)}</span>
-                    <span class="scan-notify-save-meta">${escapeHtml(s.classification || '—')}${bits.length ? ' · ' + escapeHtml(bits.join(' · ')) : ''} ${cp}</span>
+                    <span class="scan-notify-save-meta">${escapeHtml(role || '—')}${bits.length ? ' · ' + escapeHtml(bits.join(' · ')) : ''} ${cp}</span>
                 </span>${quote}</div>`;
         }).join('');
         const savesHtml =
@@ -1396,10 +1395,10 @@ document.addEventListener('submit', async e => {
         const opts = (CLASS_OPTS[node] || []).map(o =>
             `<option value="${o}" ${s.classification === o ? 'selected' : ''}>${o}</option>`).join('');
         editTitle.textContent = `Edit ${node.toLowerCase()} object`;
-        let html = field('Name', `<input id="se_name" value="${escapeHtml(s.name || '')}">`)
-            + field('Classification', `<select id="se_class"><option value=""></option>${opts}</select>`);
+        let html = field('Name', `<input id="se_name" value="${escapeHtml(s.name || '')}">`);
         if (node === 'RISK') {
-            html += field('Note', `<textarea id="se_note">${escapeHtml(s.note || '')}</textarea>`);
+            html += field('Scope', `<select id="se_class"><option value=""></option>${opts}</select>`)
+                + field('Note', `<textarea id="se_note">${escapeHtml(s.note || '')}</textarea>`);
         } else {
             html += field('Value (USD)', `<input id="se_value" type="number" step="any" value="${s.value != null ? s.value : ''}">`)
                 + field('Percentage', `<input id="se_pct" type="number" step="any" value="${s.percentage != null ? s.percentage : ''}">`)
@@ -1416,11 +1415,9 @@ document.addEventListener('submit', async e => {
         const numOrNull = v => v === '' || v == null ? null : Number(v);
         const job = jobById(openJobId);
         const node = (job?.node || 'REVENUE').toUpperCase();
-        const edit = {
-            name: $('se_name').value.trim(),
-            classification: $('se_class').value || null
-        };
+        const edit = { name: $('se_name').value.trim() };
         if (node === 'RISK') {
+            edit.classification = $('se_class').value || null;
             edit.note = $('se_note').value.trim() || null;
         } else {
             edit.value = numOrNull($('se_value').value);

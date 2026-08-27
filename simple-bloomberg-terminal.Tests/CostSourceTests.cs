@@ -18,7 +18,6 @@ public class CostSourceTests : ApiTestBase
     {
         var resp = await Client.PostAsJsonAsync("/api/costsources", new
         {
-            costBase = CostBase.COGS,
             name,
             companyId = AppleId,
             value = 200_000_000_000d,
@@ -61,7 +60,7 @@ public class CostSourceTests : ApiTestBase
     [Fact]
     public async Task Create_Valid_Returns201_WithLocation()
     {
-        var body = new { costBase = CostBase.OPEX, name = "R&D", companyId = AppleId, value = 30_000_000_000d };
+        var body = new { name = "R&D", companyId = AppleId, value = 30_000_000_000d };
 
         var resp = await Client.PostAsJsonAsync("/api/costsources", body);
         Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
@@ -75,7 +74,7 @@ public class CostSourceTests : ApiTestBase
     [Fact]
     public async Task Create_MissingRequired_Returns400()
     {
-        var body = new { costBase = CostBase.OPEX, value = 1_000d }; // missing Name + CompanyId
+        var body = new { value = 1_000d }; // missing Name + CompanyId
 
         var resp = await Client.PostAsJsonAsync("/api/costsources", body);
 
@@ -87,7 +86,7 @@ public class CostSourceTests : ApiTestBase
     {
         var id = await CreateCostSourceAsync("Logistics");
 
-        var body = new { costBase = CostBase.TOTAL_COSTS, name = "Logistics & Freight", companyId = AppleId };
+        var body = new { name = "Logistics & Freight", companyId = AppleId };
 
         var resp = await Client.PutAsJsonAsync($"/api/costsources/{id}", body);
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
@@ -99,7 +98,7 @@ public class CostSourceTests : ApiTestBase
     [Fact]
     public async Task Update_Missing_Returns404()
     {
-        var body = new { costBase = CostBase.OPEX, name = "Ghost", companyId = AppleId };
+        var body = new { name = "Ghost", companyId = AppleId };
 
         var resp = await Client.PutAsJsonAsync($"/api/costsources/{MissingId}", body);
 

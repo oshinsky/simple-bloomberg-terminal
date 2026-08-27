@@ -10,17 +10,16 @@ public static class CounterpartyPrompts
 
     public static string FastWorkerSystemPrompt(ExtractionNode node, bool strict = false)
     {
-        var classification = node == ExtractionNode.REVENUE ? "CUSTOMER" : "SUPPLIER";
         var direction = node switch
         {
             ExtractionNode.COST =>
                 "Find only COST-SIDE counterparties: named suppliers, vendors, manufacturers, foundries, " +
                 "contract producers, licensors, or service providers from which the filer buys goods, " +
-                "rights, or services. Set classification to SUPPLIER.",
+                "rights, or services.",
             ExtractionNode.REVENUE =>
                 "Find only REVENUE-SIDE counterparties: named customers, buyers, licensees, distributors, " +
                 "resellers, or commercial partners through which the filer earns or expects to earn revenue. " +
-                "Set classification to CUSTOMER.",
+                "The relationship must be revenue-generating for the filer.",
             _ => throw new ArgumentOutOfRangeException(nameof(node), node, "Counterparty prompts apply only to COST and REVENUE.")
         };
 
@@ -33,9 +32,9 @@ public static class CounterpartyPrompts
             "values or percentages from financial tables or company-wide figures. A relationship with no stated " +
             "amount is valid. For every result, write evidence first as one verbatim substring that names the " +
             "counterparty and establishes the relationship. Then return name exactly as written, related_company " +
-            "as the same name, the required classification, and a short note describing the relationship. Reply " +
+            "as the same name and a short note describing the relationship. Reply " +
             $"with JSON only: {{\"sources\":[{{\"evidence\":\"\",\"name\":\"\",\"related_company\":\"\"," +
-            $"\"classification\":\"{classification}\",\"note\":\"\"}}]}}. If the excerpt establishes no matching " +
+            $"\"note\":\"\"}}]}}. If the excerpt establishes no matching " +
             "counterparty, reply {\"sources\":[]}." +
             (strict
                 ? " STRICT MODE: require the excerpt itself to state the purchase, sale, supply, license, " +

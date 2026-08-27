@@ -39,7 +39,7 @@ public class ExtractionTests : ApiTestBase
     {
         using var scope = Factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var row = new RevenueSource(SourceType.SEGMENT, $"Revenue test {Guid.NewGuid():N}", AppleId)
+        var row = new RevenueSource($"Revenue test {Guid.NewGuid():N}", AppleId)
             { DataSource = DataSource.MANUAL };
         db.RevenueSources.Add(row);
         db.SaveChanges();
@@ -56,7 +56,6 @@ public class ExtractionTests : ApiTestBase
             companyId = AppleId,
             sourceId = rowId,
             node = "REVENUE",
-            classification = "SEGMENT",
             name = "Revenue 2023",
             value = 383_000_000_000d,
             reference = "Item 7. Management's Discussion",
@@ -86,7 +85,6 @@ public class ExtractionTests : ApiTestBase
                 companyId = AppleId,
                 sourceId = rowId,
                 node = "REVENUE",
-                classification = "SEGMENT",
                 name = "Revenue 2023",
                 reference = "Item 8. Financial Statements",
                 evidence
@@ -111,7 +109,6 @@ public class ExtractionTests : ApiTestBase
             companyId = AppleId,
             sourceId = (long?)null,   // user-created row
             node = "REVENUE",
-            classification = "PRODUCT",
             name = "Services",
             value = 85_000_000_000d,
             reference = "Item 8, Segment note",
@@ -138,7 +135,6 @@ public class ExtractionTests : ApiTestBase
             companyId = AppleId,
             sourceId = rowId,
             node = "REVENUE",
-            classification = "SEGMENT",
             name = "Revenue 2023",
             reference = "Item 7A. Quantitative Disclosures",
             evidence = "val 383000000000"
@@ -160,7 +156,6 @@ public class ExtractionTests : ApiTestBase
             companyId = AppleId,
             sourceId = (long?)null,
             node = "REVENUE",
-            classification = "SEGMENT",
             name = "X",
             evidence = ""
         });
@@ -173,7 +168,6 @@ public class ExtractionTests : ApiTestBase
         var resp = await PostExtractionAsync("/extraction/save", new
         {
             companyId = AppleId,
-            classification = "SEGMENT",
             name = "Missing node"
         });
 
@@ -190,7 +184,6 @@ public class ExtractionTests : ApiTestBase
             companyId = CustomWebApplicationFactory.CompanyBlockedId,
             sourceId = rowId,
             node = "REVENUE",
-            classification = "PRODUCT",
             name = "Should not be written"
         });
 
@@ -205,7 +198,7 @@ public class ExtractionTests : ApiTestBase
     {
         using var scope = Factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var existing = new RevenueSource(SourceType.SEGMENT, "Existing", AppleId)
+        var existing = new RevenueSource("Existing", AppleId)
         {
             Reference = "Item 7",
             Evidence = "Original evidence",
@@ -217,7 +210,7 @@ public class ExtractionTests : ApiTestBase
 
         var writer = scope.ServiceProvider.GetRequiredService<IContributionWriter>();
         var proposalId = writer.UpsertRow(
-            ExtractionNode.REVENUE, AppleId, existing.Id, "PRODUCT", "Edited", null, null, null, null,
+            ExtractionNode.REVENUE, AppleId, existing.Id, null, "Edited", null, null, null, null,
             new Contributor(false, null));
 
         var proposal = db.RevenueSources.Single(row => row.Id == proposalId);
@@ -235,7 +228,7 @@ public class ExtractionTests : ApiTestBase
 
         Task<HttpResponseMessage> RefWithFiling() => PostExtractionAsync("/extraction/reference", new
         {
-            companyId = AppleId, sourceId = rowId, node = "REVENUE", classification = "SEGMENT", name = "Revenue 2023",
+            companyId = AppleId, sourceId = rowId, node = "REVENUE", name = "Revenue 2023",
             reference = "Item 8", evidence = "snap",
             filingAccessionNumber = accession, filingForm = "10-K", filingDate = "2023-11-03", filingUrl = "http://x"
         });

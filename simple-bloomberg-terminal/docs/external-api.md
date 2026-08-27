@@ -74,9 +74,9 @@ Existing implemented source: **SEC EDGAR** (see `reference_sec_edgar_api.md`). E
 **Notes:** mirror EDGAR's idempotent refresh — clear `DataSource==FINNHUB` rows, reinsert. Symbol-keyed (not CIK), so works for foreign tickers. New enum: `DataSource.FINNHUB`.
 
 ### 5. Financial Modeling Prep (FMP)
-**Source:** financialmodelingprep.com. **Key:** free (250 req/day). **Why:** alternative/backup to Finnhub for global income statements + segment revenue — maps well to `RevenueSource{SourceType=SEGMENT}`.
-**Feeds:** `/income-statement/{symbol}` → `RevenueSource`/`CostSource`; `/revenue-product-segmentation` → per-`PRODUCT` rows; `/revenue-geographic-segmentation` → per-`REGION` rows (matches our `SourceType` enum exactly).
-**Notes:** segment endpoints are the standout — they fit `SourceType` 1:1. Lower daily cap than Finnhub.
+**Source:** financialmodelingprep.com. **Key:** free (250 req/day). **Why:** alternative/backup to Finnhub for global income statements and segment revenue.
+**Feeds:** `/income-statement/{symbol}` and revenue segmentation endpoints can populate named `RevenueSource`/`CostSource` rows without a stored source classification.
+**Notes:** segment endpoints remain useful even though segment/product/region labels are no longer persisted as an enum. Lower daily cap than Finnhub.
 
 ### 6. Alpha Vantage
 **Source:** alphavantage.co. **Key:** free (25 req/day — tight). **Feeds:** `OVERVIEW` → `Company` fundamentals; `INCOME_STATEMENT` → revenue/cost. **Notes:** 25/day cap makes it a fallback only, not a primary loop. 50+ technical indicators if price charts ever get added.

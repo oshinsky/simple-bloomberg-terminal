@@ -32,11 +32,11 @@ public class SourceCascadeTests : ApiTestBase
             filingId = filing.Id;
 
             // All three cite the same filing.
-            var rev1 = new RevenueSource(SourceType.SEGMENT, "Rev A", AppleId)
+            var rev1 = new RevenueSource("Rev A", AppleId)
                 { DataSource = DataSource.MANUAL, FilingId = filingId, Evidence = "x" };
-            var rev2 = new RevenueSource(SourceType.PRODUCT, "Rev B", AppleId)
+            var rev2 = new RevenueSource("Rev B", AppleId)
                 { DataSource = DataSource.MANUAL, FilingId = filingId, Evidence = "x" };
-            var cost = new CostSource(CostBase.COGS, "Cost A", AppleId)
+            var cost = new CostSource("Cost A", AppleId)
                 { DataSource = DataSource.MANUAL, FilingId = filingId, Evidence = "y" };
             db.RevenueSources.AddRange(rev1, rev2);
             db.CostSources.Add(cost);
@@ -71,9 +71,9 @@ public class SourceCascadeTests : ApiTestBase
             filingAId = fa.Id; filingBId = fb.Id;
 
             // rev1 cites filing A, rev2 cites filing B — different clusters.
-            var rev1 = new RevenueSource(SourceType.SEGMENT, "Rev 1", AppleId)
+            var rev1 = new RevenueSource("Rev 1", AppleId)
                 { DataSource = DataSource.MANUAL, FilingId = filingAId };
-            var rev2 = new RevenueSource(SourceType.SEGMENT, "Rev 2", AppleId)
+            var rev2 = new RevenueSource("Rev 2", AppleId)
                 { DataSource = DataSource.MANUAL, FilingId = filingBId };
             db.RevenueSources.AddRange(rev1, rev2);
             db.SaveChanges();
@@ -101,9 +101,9 @@ public class SourceCascadeTests : ApiTestBase
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             // Evidence without a filing association.
-            var solo = new RevenueSource(SourceType.SEGMENT, "Solo A", AppleId)
+            var solo = new RevenueSource("Solo A", AppleId)
                 { DataSource = DataSource.MANUAL, Evidence = "standalone evidence" };
-            var other = new RevenueSource(SourceType.SEGMENT, "Solo B", AppleId) { DataSource = DataSource.MANUAL };
+            var other = new RevenueSource("Solo B", AppleId) { DataSource = DataSource.MANUAL };
             db.RevenueSources.AddRange(solo, other);
             db.SaveChanges();
             soloId = solo.Id; otherId = other.Id;

@@ -58,10 +58,10 @@ public class CounterpartyDiscoveryService : ICounterpartyDiscovery
     private const int MaxConcurrent = 3;  // cap parallel Perplexity calls so a burst doesn't trip its rate limit
 
     // Tail of the search prompt: the per-company fields sonar must return and the exact JSON shape.
-    // Built (not a const) so the classification rule is injected directly — no string.Format/{0}, whose
+    // Built (not a const) so the extraction guidance is injected directly — no string.Format/{0}, whose
     // placeholder would clash with the literal { } braces in the embedded JSON template — and so the
     // valued mode can add a contract_value field + key without a second copy of the whole spec.
-    private static string FieldsSpec(string classRule, bool valued)
+    private static string FieldsSpec(bool valued)
     {
         // Only valued mode asks for (and emits) a dollar figure; plain mode keeps the original shape.
         var valueField = valued
@@ -72,13 +72,13 @@ public class CounterpartyDiscoveryService : ICounterpartyDiscovery
         var valueKey = valued ? ",\"contract_value\":null" : "";
         return
             "For each provide: segment (the business segment/area it relates to), name (the company), " +
-            $"classification ({classRule}), note (one short sentence on the relationship), " + valueField +
+            "note (one short sentence on the relationship), " + valueField +
             "ticker (the company's stock ticker symbol if publicly listed, e.g. MSFT, NVDA, 2317.TW; null " +
             "if private or unknown), country_code (ISO-2 code, e.g. US, DE; null if unknown), sector (one " +
             "of ENERGY, MATERIALS, INDUSTRIALS, CONSUMER_DISCRETIONARY, CONSUMER_STAPLES, HEALTH_CARE, " +
             "FINANCIALS, INFORMATION_TECHNOLOGY, COMMUNICATION_SERVICES, UTILITIES, REAL_ESTATE; null if " +
             "unknown), source_url (a URL backing it; null if none). Reply with JSON only, no prose, no " +
-            "code fences: {\"counterparties\":[{\"segment\":\"\",\"name\":\"\",\"classification\":\"\"," +
+            "code fences: {\"counterparties\":[{\"segment\":\"\",\"name\":\"\"," +
             "\"note\":null" + valueKey + ",\"ticker\":null,\"country_code\":null,\"sector\":null," +
             "\"source_url\":null}]}. If you find none, reply {\"counterparties\":[]}.";
     }
@@ -197,7 +197,6 @@ public class CounterpartyDiscoveryService : ICounterpartyDiscovery
         string query, bool supplier, bool valued, IReadOnlyList<Company> companySnapshot, CancellationToken ct)
     {
         var who = supplier ? "SUPPLIERS (companies it BUYS from)" : "CUSTOMERS (companies that BUY from it)";
-        var classRule = supplier ? "exactly one of COGS, OPEX" : "always 'CUSTOMER'";
         // Valued mode: bias toward the largest relationships and require a dollar estimate per row.
         var valuedRule = valued
             ? "Focus on the BIGGEST such relationships and, for each, estimate the USD contract value from " +
@@ -207,7 +206,7 @@ public class CounterpartyDiscoveryService : ICounterpartyDiscovery
             $"You research a single public company's {(supplier ? "suppliers" : "customers")} from current " +
             $"web sources, answering ONE focused research query. Return every real, NAMED {who} the query " +
             "surfaces — never generic labels like 'consumers' or 'various suppliers'. " + valuedRule +
-            "Prefer recent, primary sources. " + FieldsSpec(classRule, valued);
+            "Prefer recent, primary sources. " + FieldsSpec(valued);
 
         // Company-wide queries can list many companies; the cap must clear the whole JSON or it gets cut
         // mid-array (finish_reason=length) — Parse's salvage recovers a partial cut.
@@ -291,8 +290,6 @@ public class CounterpartyDiscoveryService : ICounterpartyDiscovery
             var name = LlmJson.Str(el, "name");
             if (string.IsNullOrWhiteSpace(name)) continue;
 
-            var classification = LlmJson.Str(el, "classification") ?? (supplier ? "COGS" : "CUSTOMER");
-
             // Fuzzy match so "Microsoft Corporation" maps to an existing "Microsoft".
             var existing = MatchByName(companySnapshot, name);
 
@@ -300,7 +297,6 @@ public class CounterpartyDiscoveryService : ICounterpartyDiscovery
                 Name: name!,
                 Side: side,
                 Segment: LlmJson.Str(el, "segment") ?? "",
-                Classification: classification,
                 Note: LlmJson.Str(el, "note"),
                 SourceUrl: ResolveSource(el, citations),
                 CountryCode: LlmJson.Str(el, "country_code"),

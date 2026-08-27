@@ -5,9 +5,6 @@ namespace simple_bloomberg_terminal.Models.ViewModels;
 
 public class RevenueSourceCreateModel
 {
-    [Required]
-    public SourceType SourceType { get; set; }
-
     [Required, StringLength(160)]
     public string Name { get; set; } = string.Empty;
 

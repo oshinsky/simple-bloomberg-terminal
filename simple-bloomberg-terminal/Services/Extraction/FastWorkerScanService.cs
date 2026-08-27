@@ -282,7 +282,8 @@ public class FastWorkerScanService : IFastWorkerScanService
         foreach (var s in fastWorkerFindings)
         {
             sb.Append("- ").Append(s.Name);
-            if (s.Classification != null) sb.Append(" [").Append(s.Classification).Append(']');
+            if (node == ExtractionNode.RISK && s.Classification != null)
+                sb.Append(" [").Append(s.Classification).Append(']');
             if (s.Value != null) sb.Append(" | value=").Append(s.Value);
             if (s.Percentage != null) sb.Append(" | pct=").Append(s.Percentage);
             if (!string.IsNullOrWhiteSpace(s.RelatedCompany)) sb.Append(" | counterparty=").Append(s.RelatedCompany);
@@ -373,7 +374,7 @@ public class FastWorkerScanService : IFastWorkerScanService
             if (string.IsNullOrWhiteSpace(name)) continue;
             yield return new ExtractionSuggestion(
                 Name: name!,
-                Classification: ReadJsonText(el, "classification"),
+                Classification: node == ExtractionNode.RISK ? ReadJsonText(el, "classification") : null,
                 Value: null,
                 Percentage: null,
                 RelatedCompany: ReadJsonText(el, "related_company"),

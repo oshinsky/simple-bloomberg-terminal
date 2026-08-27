@@ -230,8 +230,8 @@ shows its **parallel agent calls** with live status (queued → running → done
 - **Reply is polled, not streamed** — text arrives in ~1s chunks (the cost of detaching generation
   from the page). Token-by-token would require holding a page-bound stream, which can't survive
   navigation.
-- **`CLASS_OPTS` is duplicated** in `site.js` from the server enums (`SourceType`/`CostBase`/
-  `RiskScope`). If those enums change, update the JS map too.
+- **`CLASS_OPTS` is duplicated** in `site.js` from `RiskScope`. Revenue/cost direction is derived
+  from the scan node and has no classification dropdown.
 - **Single user assumption** — `ScanJobStore` is not partitioned per user; the browser tracks its own
   ids. Jobs live until dismissed or process restart (no TTL eviction).
 - **Save identity** — `saveSel`/`saveEdits` are keyed by the original block name; renaming in the edit

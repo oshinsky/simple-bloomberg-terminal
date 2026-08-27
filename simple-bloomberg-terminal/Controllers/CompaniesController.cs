@@ -567,14 +567,14 @@ public class CompaniesController : Controller
         if (c == null) return NotFound();
 
         var owned = c.RevenueSources.Where(r => r.DeletedAt == null && r.Status == ContributionStatus.Approved)
-                .Select(r => new { kind = "revenue", direction = "owned", id = r.Id, name = r.Name, type = r.SourceType.ToString(), value = r.Value, other = r.RelatedCompany?.Name })
+                .Select(r => new { kind = "revenue", direction = "owned", id = r.Id, name = r.Name, type = "CUSTOMER", value = r.Value, other = r.RelatedCompany?.Name })
             .Concat(c.CostSources.Where(s => s.DeletedAt == null && s.Status == ContributionStatus.Approved)
-                .Select(s => new { kind = "cost", direction = "owned", id = s.Id, name = s.Name, type = s.CostBase.ToString(), value = s.Value, other = s.RelatedCompany?.Name }));
+                .Select(s => new { kind = "cost", direction = "owned", id = s.Id, name = s.Name, type = "SUPPLIER", value = s.Value, other = s.RelatedCompany?.Name }));
 
         var inverse = c.RevenueFromDependents.Where(r => r.DeletedAt == null && r.Status == ContributionStatus.Approved)
-                .Select(r => new { kind = "revenue", direction = "inverse", id = r.Id, name = r.Name, type = r.SourceType.ToString(), value = r.Value, other = r.Company?.Name })
+                .Select(r => new { kind = "revenue", direction = "inverse", id = r.Id, name = r.Name, type = "CUSTOMER", value = r.Value, other = r.Company?.Name })
             .Concat(c.CostFromDependents.Where(s => s.DeletedAt == null && s.Status == ContributionStatus.Approved)
-                .Select(s => new { kind = "cost", direction = "inverse", id = s.Id, name = s.Name, type = s.CostBase.ToString(), value = s.Value, other = s.Company?.Name }));
+                .Select(s => new { kind = "cost", direction = "inverse", id = s.Id, name = s.Name, type = "SUPPLIER", value = s.Value, other = s.Company?.Name }));
 
         return Json(new { owned, inverse });
     }

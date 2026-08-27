@@ -10,10 +10,6 @@ public enum RiskScope
     MACROECONOMIC = 0, INDUSTRY = 1, BUSINESS = 2, LEGAL_REGULATORY = 3, FINANCIAL = 4, GENERAL = 5
 }
 
-public enum SourceType { CUSTOMER = 0, SEGMENT = 1, REGION = 2, PRODUCT = 3 }
-
-public enum CostBase { COGS = 0, OPEX = 1, TOTAL_COSTS = 2 }
-
 public enum FiscalPeriod { FY = 0, Q1 = 1, Q2 = 2, Q3 = 3, Q4 = 4 }
 
 public enum DataSource { EDGAR = 0, MANUAL = 1, CLAUDE_ESTIMATED = 2, OPENBB = 3, FMP = 4, YAHOO = 5 }
@@ -23,9 +19,9 @@ public enum DataSource { EDGAR = 0, MANUAL = 1, CLAUDE_ESTIMATED = 2, OPENBB = 3
 
 public record TCountry(string? Code, string? Name, string? Region);
 
-public record TRevenueSource(SourceType SourceType, string Name, double? Value, double? Percentage, long? RelatedCompanyId);
+public record TRevenueSource(string Name, double? Value, double? Percentage, long? RelatedCompanyId);
 
-public record TCostSource(CostBase CostBase, string Name, double? Value, double? Percentage, long? RelatedCompanyId);
+public record TCostSource(string Name, double? Value, double? Percentage, long? RelatedCompanyId);
 
 public record TCompany(
     long Id,

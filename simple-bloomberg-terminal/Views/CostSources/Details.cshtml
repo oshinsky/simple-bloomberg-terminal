@@ -13,7 +13,7 @@
     <div class="detail-hero-top">
         <div class="detail-hero-name-row">
             <h1 class="detail-hero-name">@Model.Name</h1>
-            <span class="detail-code-badge">@Model.CostBase</span>
+            <span class="detail-code-badge">SUPPLIER</span>
             @if (Model.Company != null)
             {
                 <span class="detail-region-tag">@Model.Company.Name</span>
@@ -53,8 +53,8 @@
             </div>
         </div>
         <div class="detail-metric-card">
-            <div class="detail-metric-label">COST BASE</div>
-            <div class="detail-metric-value">@Model.CostBase</div>
+            <div class="detail-metric-label">ROLE</div>
+            <div class="detail-metric-value">SUPPLIER</div>
         </div>
         <div class="detail-metric-card">
             <div class="detail-metric-label">COMPANY</div>
@@ -88,8 +88,8 @@
                         <td class="name-cell">@Model.Name</td>
                     </tr>
                     <tr>
-                        <td class="tag-cell">Cost Base</td>
-                        <td class="name-cell">@Model.CostBase</td>
+                        <td class="tag-cell">Role</td>
+                        <td class="name-cell">SUPPLIER</td>
                     </tr>
                     <tr>
                         <td class="tag-cell">Value</td>

@@ -31,12 +31,10 @@ public sealed class ExtractionChatService : IExtractionChatService
             "that does not appear in the findings. Help the user review and decide which counterparty " +
             "relationships to keep. Be concise.\n\n" +
             "When the user wants to SAVE a specific counterparty, output a fenced block exactly like:\n" +
-            "```save\n{\"name\":\"\",\"classification\":\"COGS\",\"value\":null,\"percentage\":null," +
+            "```save\n{\"name\":\"\",\"value\":null,\"percentage\":null," +
             "\"related_company\":null,\"related_company_ticker\":null,\"reference\":null," +
             "\"evidence\":\"\"}\n```\n" +
-            "name is the counterparty's company name. classification is the accounting bucket the " +
-            "spend falls in, exactly one of COGS, OPEX, TOTAL_COSTS - use COGS for a supplier of " +
-            "goods or production services, OPEX for a supplier of overhead services. Keep value and " +
+            "name is the supplier company's name. Keep value and " +
             "percentage null unless the filing explicitly attributes a figure to this named counterparty. " +
             "related_company is the same counterparty name; when " +
             "it's a publicly traded company you can identify, also set related_company_ticker to its " +
@@ -71,11 +69,11 @@ public sealed class ExtractionChatService : IExtractionChatService
             "not establish a value for a specific counterparty, so never attach them to one. " +
             "A counterparty relationship with no stated amount is valid. Be concise.\n\n" +
             "When the user wants to SAVE a specific counterparty, output a fenced block exactly like:\n" +
-            "```save\n{\"name\":\"\",\"classification\":\"CUSTOMER\",\"value\":null," +
+            "```save\n{\"name\":\"\",\"value\":null," +
             "\"percentage\":null,\"related_company\":\"\",\"related_company_ticker\":null," +
             "\"reference\":null,\"evidence\":\"\"}\n```\n" +
-            "name and related_company are the counterparty's company name. classification is always " +
-            "CUSTOMER. Keep value and percentage null unless the filing explicitly attributes that figure " +
+            "name and related_company are the customer company's name. Keep value and percentage null " +
+            "unless the filing explicitly attributes that figure " +
             "to this named counterparty. Set related_company_ticker only when the filing context identifies " +
             "it reliably. reference names the SEC Item or note and includes the source passage. evidence is " +
             "one verbatim excerpt substring that names the company and establishes the commercial relationship. " +
