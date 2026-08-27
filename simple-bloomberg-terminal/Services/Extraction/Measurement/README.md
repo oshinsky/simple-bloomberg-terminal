@@ -57,7 +57,7 @@ CounterpartyMeasurementService.cs           [MEASUREMENT]
 ```
 
 The normal chat and measurement paths are sibling orchestrators. Both use the shared scan, filing-context,
-and lead-agent execution services. `ExtractionChatService` adds conversation, handoffs, and save blocks;
+and lead-agent execution services. `ExtractionChatService` adds conversation and save blocks;
 `CounterpartyMeasurementService` instead adds repeated runs, a fixed ledger contract, artifact capture,
 and scoring.
 
@@ -74,7 +74,7 @@ and scoring.
 | `Services/Clients/Edgar/StockApiClient.cs` | Downloads filing documents from EDGAR. |
 | `Services/Extraction/FilingAnalysisContextService.cs` | Builds shared filing-digest and raw-text fallback context. |
 | `Services/Extraction/LeadAgentRunner.cs` | Executes prompt-agnostic lead-agent calls. |
-| `Services/Extraction/Chat/ExtractionChatService.cs` | Adds interactive conversation, handoffs, and save-block prompts; measurement does not depend on it. |
+| `Services/Extraction/Chat/ExtractionChatService.cs` | Adds interactive conversation and save-block prompts; measurement does not depend on it. |
 | `Services/Extraction/CounterpartyPrompts.cs` | Owns the directional COST/REVENUE fast-worker contract. |
 | `MeasurementPrompts.cs` | Owns the versioned measurement lead-agent contract. |
 | `CounterpartyLedgerCodec.cs` | Parses fast-worker and lead-agent JSON into the same ledger model. |
@@ -104,3 +104,4 @@ Before scoring, the measurement layer normalizes case, punctuation, whitespace, 
 The raw name is retained for auditing. Ambiguous aliases such as `AMD` and `Advanced Micro Devices`
 are not merged automatically because an incorrect match could artificially improve the result. A
 company's normalized identity and its relationship direction are measured separately.
+

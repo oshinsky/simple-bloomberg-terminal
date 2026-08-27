@@ -7,10 +7,8 @@ namespace simple_bloomberg_terminal.Services.Extraction.Chat;
 // The client resends visible turns while private filing context is rebuilt on the server.
 public interface IExtractionChatService
 {
-    // A received handoff uses cached findings and the receiver prompt because the source agent already
-    // found the fact.
     IAsyncEnumerable<ChatDelta> StreamReplyAsync(
         long companyId, string accession, string doc, ExtractionNode node,
-        IReadOnlyList<ChatMessage> history, string? filingType = null, bool handoff = false,
+        IReadOnlyList<ChatMessage> history, string? filingType = null,
         CancellationToken ct = default);
 }

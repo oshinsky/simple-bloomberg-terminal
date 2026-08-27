@@ -561,84 +561,6 @@ public class ExtractionController : Controller
         return Json(new { jobId = job.Id });
     }
 
-    // Cross-segment hand-off (worker-less). The SOURCE segment's agent already FOUND the fact and
-    // emitted a ```handoff``` block; this spins up the TARGET segment's agent to re-dress it in that
-    // segment's save schema — NO worker re-scan. It runs one turn whose first user message IS the seed, so the target
-    // widget opens with a proposed ```save``` block ready to tick + Save. See docs/extraction/cross-extraction.md.
-    [HttpPost, Route("scan-handoff/{companyId:long}")]
-    public async Task<IActionResult> ScanHandoff(
-        long companyId, [FromBody] ScanHandoffRequest req,
-        [FromQuery] string accession, [FromQuery] string doc,
-        [FromQuery] string? node, [FromQuery] string? form,
-        [FromQuery] string? companyName, [FromQuery] string? filingLabel)
-    {
-        if (_companies.GetById(companyId) is null) return NotFound();
-        if (string.IsNullOrWhiteSpace(accession) || string.IsNullOrWhiteSpace(doc))
-            return BadRequest("accession and doc are required.");
-        if (req is null || string.IsNullOrWhiteSpace(req.Seed)) return BadRequest("seed is required.");
-
-        // Runs on the user's chosen parsing provider. Verify that key now (throw -> 424 popup) and
-        // snapshot it for the detached scope (no HttpContext there).
-        var keys = await _keys.GetAsync();
-        RequireParsingKey(keys);
-
-        var parsedNode = ParseNode(node);
-        var seed = req.Seed;
-        var job = new ScanJob
-        {
-            CompanyId = companyId,
-            CompanyName = companyName ?? _companies.GetById(companyId)?.Name ?? "",
-            Accession = accession,
-            Doc = doc,
-            Node = parsedNode.ToString(),
-            Form = form,
-            FilingLabel = filingLabel ?? form ?? "filing"
-        };
-        _jobs.Add(job);
-
-        _ = Task.Run(async () =>
-        {
-            using var scope = _scopeFactory.CreateScope();
-            scope.ServiceProvider.GetRequiredService<IUserApiKeyProvider>().Set(keys);
-            var chat = scope.ServiceProvider.GetRequiredService<IExtractionChatService>();
-            try
-            {
-                // No worker scan — the source agent already found this; we only re-dress it in this
-                // segment's schema.
-                job.Progress = "Recording the handed-over item…";
-                job.Replying = true;
-                job.ReplyBuffer = "";
-                job.ReplyThink = "";
-                // The seed IS the first turn (not the canned "summarize the candidates"); scanIfMissing
-                // :false keeps the workers off.
-                var history = new List<ChatMessage> { new("user", seed) };
-                await foreach (var d in chat.StreamReplyAsync(
-                    companyId, accession, doc, parsedNode, history, form, handoff: true))
-                {
-                    if (d.Kind == "text") job.ReplyBuffer += d.Text;
-                    else if (d.Kind == "reasoning") job.ReplyThink += d.Text;
-                }
-                job.Summary = job.ReplyBuffer;   // lets ensureChatHistory reconstruct the assistant turn
-                job.Replying = false;
-                job.Progress = "";
-                job.Status = ScanJobStatus.Done;
-            }
-            catch (Exception ex)
-            {
-                job.Status = ScanJobStatus.Error;
-                job.Error = ex.Message;
-                job.Progress = "";
-                job.Replying = false;
-            }
-            finally
-            {
-                job.CompletedAt = DateTimeOffset.UtcNow;
-            }
-        });
-
-        return Json(new { jobId = job.Id });
-    }
-
     // Status of the jobs the browser is tracking (ids it holds in localStorage, comma-separated).
     // Unknown ids are skipped — the store evicts nothing, but a dismissed/lost job just drops out.
     [HttpGet, Route("scan-jobs")]
@@ -796,7 +718,6 @@ public class ExtractionController : Controller
 
         var node = ParseNode(job.Node);
         var history = req?.Messages ?? [];
-        var handoff = req?.Handoff ?? false;
         job.Replying = true;
         job.ReplyBuffer = "";
         job.ReplyThink = "";
@@ -809,7 +730,7 @@ public class ExtractionController : Controller
             var chat = scope.ServiceProvider.GetRequiredService<IExtractionChatService>();
             try
             {
-                await foreach (var d in chat.StreamReplyAsync(job.CompanyId, job.Accession, job.Doc, node, history, job.Form, handoff))
+                await foreach (var d in chat.StreamReplyAsync(job.CompanyId, job.Accession, job.Doc, node, history, job.Form))
                 {
                     if (d.Kind == "text") job.ReplyBuffer += d.Text;
                     else if (d.Kind == "reasoning") job.ReplyThink += d.Text;

@@ -696,11 +696,10 @@ document.addEventListener('submit', async e => {
         ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     // Pretty hostname for a citation link (strip scheme + www.), falling back to the raw URL.
     const srcHost = u => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; } };
-    // Hide ```save``` and ```handoff``` {json} blocks from the prose shown in bubbles (kept verbatim
-    // in history). Collapse the blank lines the removed blocks leave behind so they don't gap the text.
+    // Hide ```save``` {json} blocks from the prose shown in bubbles (kept verbatim in history).
+    // Collapse the blank lines the removed blocks leave behind so they don't gap the text.
     const stripSave = t => t
         .replace(/```save[\s\S]*?```/g, '')
-        .replace(/```handoff[\s\S]*?```/g, '')
         .replace(/\n{3,}/g, '\n\n').trim();
     // Minimal Markdown → HTML for chat bubbles. Escapes first (LLM output is untrusted),
     // then renders a safe subset: headings, bold/italic/code, lists, tables, rules, links.
@@ -1122,91 +1121,6 @@ document.addEventListener('submit', async e => {
         return [...byName.values()];
     }
 
-    // ── Cross-segment hand-off ──
-    // The source agent emits ```handoff {node, seed}``` when info belongs to another segment. We route
-    // the seed to that segment's agent (reuse its job if one's tracked, else spawn a worker-less one),
-    // which proposes the save in ITS OWN checklist. See docs/extraction/cross-extraction.md.
-    const HANDOFFS_KEY = 'bbt.handoffsDone';        // dispatched hand-off keys, persisted across reloads
-    let handoffsDone = new Set(read(HANDOFFS_KEY, []));
-    const markHandoff = k => { handoffsDone.add(k); write(HANDOFFS_KEY, [...handoffsDone]); };
-    // Stable-ish hash of a string, so a re-render/reload can't re-dispatch the same hand-off.
-    const hashStr = s => { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return h; };
-
-    function parseHandoffBlocks(text) {
-        const out = [];
-        const re = /```handoff\s*([\s\S]*?)```/g;
-        let x;
-        while ((x = re.exec(text || '')) !== null) {
-            let j; try { j = JSON.parse(x[1].trim()); } catch { continue; }
-            const node = (j.node || '').toUpperCase();
-            if (CLASS_OPTS[node] && j.seed) out.push({ node, seed: String(j.seed) });
-        }
-        return out;
-    }
-
-    // Fire any not-yet-dispatched hand-off blocks in a finished source reply.
-    function dispatchHandoffs(sourceJob, replyText) {
-        for (const b of parseHandoffBlocks(replyText)) {
-            if (b.node === sourceJob.node) continue;   // same segment — just a normal save, not a hand-off
-            const key = `${sourceJob.id}|${b.node}|${hashStr(b.seed)}`;
-            if (handoffsDone.has(key)) continue;
-            markHandoff(key);
-            routeHandoff(sourceJob, b.node, b.seed);
-        }
-    }
-
-    // Deliver the seed to the target segment: reuse an existing tracked job for the same filing+node
-    // (no re-scan), else spawn a worker-less one. Either way the target proposes the save itself.
-    async function routeHandoff(sourceJob, node, seed) {
-        const existing = jobs.find(j => j.kind !== 'rediscover'
-            && j.companyId === sourceJob.companyId && j.accession === sourceJob.accession && j.node === node);
-        if (existing) { await sendSeedToJob(existing, seed); return; }
-        try {
-            const qs = new URLSearchParams({
-                accession: sourceJob.accession, doc: sourceJob.doc, node,
-                form: sourceJob.form || '', companyName: sourceJob.companyName || '',
-                filingLabel: sourceJob.filingLabel || ''
-            });
-            const res = await fetch(`/extraction/scan-handoff/${sourceJob.companyId}?${qs}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token() },
-                body: JSON.stringify({ seed })
-            });
-            if (!res.ok) return;
-            const { jobId } = await res.json();
-            // Pre-seed the new job's visible history with the hand-off request so refreshReply appends
-            // the assistant turn (it keys off the last stored role being 'user'), making the proposed
-            // save block parseable; then track + open it so the user watches the proposal appear.
-            write(chatKey(jobId), [{ role: 'user', content: seed }]);
-            window.startScanJob(jobId, {
-                companyId: sourceJob.companyId, companyName: sourceJob.companyName,
-                accession: sourceJob.accession, doc: sourceJob.doc, node,
-                form: sourceJob.form, filingLabel: sourceJob.filingLabel
-            });
-            openJobId = jobId; refreshReply(jobId); render();
-        } catch { /* leave it; the user can re-ask */ }
-    }
-
-    // Push the seed as a follow-up user turn to an existing job and kick its detached reply (mirrors
-    // sendChat, but for a job that may not be the open one).
-    async function sendSeedToJob(job, seed) {
-        const h = ensureChatHistory(job);
-        h.push({ role: 'user', content: seed });
-        write(chatKey(job.id), h);
-        openJobId = job.id; forceBottom = true;
-        live = { jobId: job.id, reply: '', think: '', replying: true, error: null };
-        panel.hidden = false; render();
-        try {
-            const res = await fetch(`/extraction/scan-jobs/${job.id}/reply`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token() },
-                body: JSON.stringify({ messages: h, handoff: true })
-            });
-            if (!res.ok) { live = { jobId: job.id, reply: '', think: '', replying: false, error: `error ${res.status}` }; render(); return; }
-        } catch { live = { jobId: job.id, reply: '', think: '', replying: false, error: 'network error' }; render(); return; }
-        startChatPoll(); startTimer();
-    }
-
     function renderSaves(job) {
         if (saveSelJob !== job.id) { saveSel = new Set(); saveEdits = {}; saveSelJob = job.id; }
         // Merge any user edits onto the parsed blocks (key survives a rename).
@@ -1338,9 +1252,6 @@ document.addEventListener('submit', async e => {
                 h.push({ role: 'assistant', content: s.reply });
                 write(chatKey(id), h);
                 live = null;   // it's in history now; render from there
-                // Route any cross-segment hand-off blocks this just-finished reply emitted.
-                const src = jobById(id);
-                if (src) dispatchHandoffs(src, s.reply);
             } else if (!s.error) {
                 live = null;
             }

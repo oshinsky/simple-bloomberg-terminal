@@ -1244,21 +1244,6 @@
 
 ---
 
-## /extraction/scan-handoff/{companyId}
-
-| Field | Value |
-|---|---|
-| Controller | ExtractionController |
-| Action | ScanHandoff |
-| HTTP | POST |
-| Route source | `[Route("extraction")]` + `[Route("scan-handoff/{companyId:long}")]` |
-| View | — (JSON `{ jobId }`) |
-| Parameters | companyId: long (route, constrained); accession: string (query, required); doc: string (query, required); node: string? (query — the TARGET segment `REVENUE`\|`COST`\|`RISK`, default `REVENUE`); form: string? (query — SEC form type); companyName: string? (query); filingLabel: string? (query); JSON body — `{ seed }` (required) |
-| Auth | `[Authorize]` (class-level, any authenticated user) + a configured parsing-provider key (`RequireParsingKey`, else 424 `MISSING_KEY`) |
-| Notes | Cross-segment hand-off: one segment's analyst found a fact belonging to ANOTHER segment and emitted a ```handoff``` block, which the browser turns into this call. Registers a detached `ScanJob` and runs the TARGET segment's agent in receiver mode (`handoff: true` — ground only on cached findings, no worker fan-out, record rather than re-route), seeded with `req.Seed`: the instruction plus the verbatim source passage, since the receiving analyst cannot see the source segment's text. Returns the `jobId` at once; the notification widget polls `scan-jobs`. Persists nothing to the DB. Responses: 200 OK (`{ jobId }`); 400 (missing accession/doc, or missing seed); 404 (no such company); 424 (missing API key). See docs/extraction/cross-extraction.md |
-
----
-
 ## /extraction/scan-jobs
 
 | Field | Value |

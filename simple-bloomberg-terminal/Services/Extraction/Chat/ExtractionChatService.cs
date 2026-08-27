@@ -22,32 +22,7 @@ public sealed class ExtractionChatService : IExtractionChatService
         _cache = cache;
     }
 
-    private const string HandoffSuffix =
-        "\n\nIf the user surfaces information that belongs to a DIFFERENT segment (e.g. a supplier or " +
-        "cost detail while you are the REVENUE or RISK analyst; a customer or revenue detail while you " +
-        "are COST or RISK; a disclosed risk while you are COST or REVENUE), do NOT try to save it " +
-        "yourself - you don't own that segment's schema. Instead emit a fenced block exactly like:\n" +
-        "```handoff\n{\"node\":\"COST\",\"seed\":\"\"}\n```\n" +
-        "node is the target segment, exactly one of COST, REVENUE, RISK. seed is a self-contained " +
-        "instruction for that segment's analyst: what the user wants recorded AND the verbatim source " +
-        "passage backing it (quote it from the findings above), since that analyst cannot see this " +
-        "segment's text. Emit one handoff block per cross-segment item, alongside your normal reply.";
-
-    private const string HandoffReceiverSuffix =
-        "\n\nIMPORTANT - this is a CROSS-SEGMENT HAND-OFF you are RECEIVING. Another segment's analyst " +
-        "has already determined this item belongs to YOUR segment and routed it to you with the " +
-        "verbatim source text. Do NOT hand it off again, do NOT route it elsewhere, and do NOT " +
-        "question the routing - your only job is to RECORD it here. Emit a ```save``` block now using " +
-        "the schema above, putting the supplied passage in `reference` and in `evidence`. " +
-        "The item may be a qualitative relationship (a supplier/customer/counterparty dependency) with " +
-        "NO dollar figure - that is expected and valid: set `value` and `percentage` to null, name the " +
-        "counterparty in `related_company`, and still emit the save block. Then confirm in one sentence " +
-        "what you saved.";
-
-    private static string LeadAgentPromptFor(ExtractionNode node, bool handoff) =>
-        BaseLeadAgentPromptFor(node) + (handoff ? HandoffReceiverSuffix : HandoffSuffix);
-
-    private static string BaseLeadAgentPromptFor(ExtractionNode node) => node switch
+    private static string LeadAgentPromptFor(ExtractionNode node) => node switch
     {
         ExtractionNode.COST =>
             "You are the lead financial analyst. Parallel worker agents have already scanned ONE SEC " +
@@ -110,22 +85,22 @@ public sealed class ExtractionChatService : IExtractionChatService
 
     public async IAsyncEnumerable<ChatDelta> StreamReplyAsync(
         long companyId, string accession, string doc, ExtractionNode node,
-        IReadOnlyList<ChatMessage> history, string? filingType = null, bool handoff = false,
+        IReadOnlyList<ChatMessage> history, string? filingType = null,
         [EnumeratorCancellation] CancellationToken ct = default)
     {
         var hasFiling = !string.IsNullOrWhiteSpace(accession) && !string.IsNullOrWhiteSpace(doc);
-        if (hasFiling && !handoff &&
+        if (hasFiling &&
             !_cache.TryGetValue(FastWorkerScanService.FastWorkerDigestKey(accession, doc, node), out _))
             yield return new ChatDelta("status", "Scanning the filing with parallel fast worker agents...");
 
         var filingContext = await _context.BuildAsync(
-            companyId, accession, doc, node, filingType, scanIfMissing: !handoff, ct: ct);
+            companyId, accession, doc, node, filingType, scanIfMissing: true, ct: ct);
         var messages = history
             .Select(message => new LlmMessage(
                 message.Role == "assistant" ? "assistant" : "user", message.Content))
             .ToList();
         await foreach (var delta in _leadAgent.StreamAsync(
-            LeadAgentPromptFor(node, handoff), filingContext, messages, ct))
+            LeadAgentPromptFor(node), filingContext, messages, ct))
             yield return delta;
     }
 }

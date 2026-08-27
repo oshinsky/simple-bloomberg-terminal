@@ -38,8 +38,8 @@ Primary SEC filing document
                     /                 \
                    v                   v
        ExtractionChatService   CounterpartyMeasurementService
-       conversation, saves,    repeated COST runs, artifacts,
-       and handoffs             structured ledger, and scoring
+       conversation and saves  repeated COST runs, artifacts,
+                               structured ledger, and scoring
 ```
 
 Chat and measurement are sibling consumers. Measurement does not call `ExtractionChatService`.
@@ -63,7 +63,6 @@ null unless the filing explicitly attributes a figure to the named company.
 
 - conversation history and streaming replies;
 - node-specific review and `save` block schemas;
-- cross-node `handoff` blocks;
 - cached-digest lookup and scan-on-first-chat behavior.
 
 The normal detached flow is:
@@ -82,7 +81,7 @@ reply buffers. It is a singleton because work continues after the starting HTTP 
 
 ## Measurement
 
-`CounterpartyMeasurementService` is a wrapper around the shared extraction core, not around chat. It:
+`CounterpartyMeasurementService` is a wrapper around the shared extraction core. It:
 
 1. fixes the node to `COST`;
 2. runs the complete fast-worker and lead-agent cycle N times;
@@ -93,7 +92,7 @@ reply buffers. It is a singleton because work continues after the starting HTTP 
 7. calculates repeatability, evidence presence, and retention.
 
 The versioned measurement prompt and pure scoring code live in `Services/Extraction/Measurement`.
-The measurement contract is independent of conversational save and handoff prompts.
+The measurement contract is independent of conversational save prompts.
 Unlike interactive chat, the measurement lead step uses one non-streaming completion capped at 16,000
 output tokens. It retries once when the provider times out or ends the HTTP response prematurely, logs
 the provider/model and digest size, and records a lead error without discarding the rest of the batch.
@@ -144,4 +143,3 @@ Registrations are in `Program.cs`; HTTP orchestration is in `Controllers/Extract
 - `docs/measurement.md` — metrics, concurrency, and experimental caveats.
 - `docs/ai-popup-chat.md` — detached scan/chat widget and client flow.
 - `Services/Extraction/Measurement/README.md` — measurement folder and file map.
-- `docs/extraction/cross-extraction.md` — cross-node handoff behavior.

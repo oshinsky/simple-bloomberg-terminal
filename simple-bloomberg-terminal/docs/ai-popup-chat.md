@@ -87,7 +87,7 @@ Reused (no new persistence logic):
 - `IFilingAnalysisContextService` — grounds consumers on the cached digest or filing-text fallback.
 - `ILeadAgentRunner` — executes a prompt against that context without imposing chat semantics.
 - `IExtractionChatService.StreamReplyAsync` — adds the conversational prompt, history, save blocks, and
-  handoffs; used for the auto-summary and chat replies, but not by the measurement harness.
+  save blocks; used for the auto-summary and chat replies, but not by the measurement harness.
 - `UpsertRow`, `GetOrCreateCompanyAsync`, `EnsureReciprocal`,
   `ResolveFilingId` — the existing save / link-counterparty helpers.
 
@@ -168,7 +168,7 @@ Key functions:
 - `openEdit()` / `applyEdit()` — the per-node edit popup; `CLASS_OPTS` mirrors the enum dropdowns.
 - drag-resize: `pointerdown` on `#scanNotifySavesGrip` adjusts `#scanNotifySaves` height (persisted in
   `bbt.scanSavesH`).
-- `window.startScanJob(jobId, meta)` — exposed for the Extraction page to hand off a scan and pop the
+- `window.startScanJob(jobId, meta)` — exposed for the Extraction page to register a scan and pop the
   window open instantly with an optimistic stub row.
 
 #### localStorage keys
@@ -248,5 +248,5 @@ shows its **parallel agent calls** with live status (queued → running → done
 | `Views/Shared/_Layout.cshtml` | widget + edit-modal markup |
 | `wwwroot/css/site.css` | `scan-notify-*` / `scan-edit-*` styles |
 | `wwwroot/js/site.js` | the widget IIFE (poll, chat, checklist, edit, drag) |
-| `Views/Extraction/Index.cshtml` | scan hand-off (`startScanJob`) — sole scan/chat entry point |
+| `Views/Extraction/Index.cshtml` | scan registration (`startScanJob`) — sole scan/chat entry point |
 | `docs/sitemap.md` | route reference (kept in sync) |

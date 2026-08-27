@@ -94,3 +94,4 @@ public sealed record CounterpartyRunResult(
     IReadOnlyList<CounterpartyClaim> FastWorkerClaims,
     IReadOnlyList<CounterpartyClaim> LeadAgentClaims,
     IReadOnlyList<string> Errors);
+

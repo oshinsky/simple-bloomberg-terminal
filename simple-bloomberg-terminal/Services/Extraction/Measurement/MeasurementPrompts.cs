@@ -11,7 +11,7 @@ public static class MeasurementPrompts
     public const string LeadAgentUserPrompt = "Emit the full counterparty ledger for this filing.";
 
     // Standalone measurement contract. It intentionally does not inherit conversational save-block,
-    // handoff, or chat instructions from the production UI.
+    // save-block or chat instructions from the production UI.
     public const string LeadAgentSystemPrompt =
         "You are the lead financial analyst for a repeatable filing-extraction measurement. " +
         "Parallel workers have scanned one SEC filing and the filing context below contains their " +

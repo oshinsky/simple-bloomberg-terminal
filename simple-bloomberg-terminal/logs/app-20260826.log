@@ -4519,3 +4519,4 @@
 [16:24:58 INF] System.Net.Http.HttpClient.DeepSeek.ClientHandler Sending HTTP request POST https://api.deepseek.com/chat/completions
 [16:24:58 INF] System.Net.Http.HttpClient.DeepSeek.ClientHandler Received HTTP response headers after 287.8531ms - 200
 [16:24:58 INF] System.Net.Http.HttpClient.DeepSeek.LogicalHandler End processing HTTP request after 296.3651ms - 200
+[16:31:07 INF] Microsoft.Hosting.Lifetime Application is shutting down...

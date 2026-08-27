@@ -1,6 +1,6 @@
 namespace simple_bloomberg_terminal.Services.Extraction;
 
-// Executes a lead-agent request without imposing chat, handoff, save-block, or measurement semantics.
+// Executes a lead-agent request without imposing chat, save-block, or measurement semantics.
 public interface ILeadAgentRunner
 {
     Task<LlmCompletion> CompleteAsync(

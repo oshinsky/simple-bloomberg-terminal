@@ -233,18 +233,6 @@ public record ChatMessage(string Role, string Content);
 public class ScanJobReplyRequest
 {
     public List<ChatMessage> Messages { get; set; } = [];
-
-    // True when this turn delivers a cross-segment hand-off to an EXISTING target job: the agent must
-    // record it (receiver prompt) and not re-route, exactly like a freshly-spawned hand-off.
-    public bool Handoff { get; set; }
-}
-
-/// <summary>Body for a worker-less cross-segment hand-off spawn: the seed prompt the source segment's
-/// agent wrote (the user's request + the verbatim source passage), run as the target segment's first
-/// and only auto turn — no worker re-scan. See docs/extraction/cross-extraction.md.</summary>
-public class ScanHandoffRequest
-{
-    public string Seed { get; set; } = "";
 }
 
 /// <summary>
