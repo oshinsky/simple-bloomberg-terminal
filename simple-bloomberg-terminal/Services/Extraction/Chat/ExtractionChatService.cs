@@ -1,5 +1,4 @@
 using System.Runtime.CompilerServices;
-using Microsoft.Extensions.Caching.Memory;
 using simple_bloomberg_terminal.Models.Enums;
 using simple_bloomberg_terminal.Models.ViewModels;
 
@@ -10,16 +9,16 @@ public sealed class ExtractionChatService : IExtractionChatService
 {
     private readonly IFilingAnalysisContextService _context;
     private readonly ILeadAgentRunner _leadAgent;
-    private readonly IMemoryCache _cache;
+    private readonly IFastWorkerScanService _scan;
 
     public ExtractionChatService(
         IFilingAnalysisContextService context,
         ILeadAgentRunner leadAgent,
-        IMemoryCache cache)
+        IFastWorkerScanService scan)
     {
         _context = context;
         _leadAgent = leadAgent;
-        _cache = cache;
+        _scan = scan;
     }
 
     private static string LeadAgentPromptFor(ExtractionNode node) => node switch
@@ -85,16 +84,16 @@ public sealed class ExtractionChatService : IExtractionChatService
 
     public async IAsyncEnumerable<ChatDelta> StreamReplyAsync(
         long companyId, string accession, string doc, ExtractionNode node,
-        IReadOnlyList<ChatMessage> history, string? filingType = null,
+        IReadOnlyList<ChatMessage> history,
         [EnumeratorCancellation] CancellationToken ct = default)
     {
         var hasFiling = !string.IsNullOrWhiteSpace(accession) && !string.IsNullOrWhiteSpace(doc);
         if (hasFiling &&
-            !_cache.TryGetValue(FastWorkerScanService.FastWorkerDigestKey(accession, doc, node), out _))
+            _scan.GetCachedDigest(accession, doc, node) is null)
             yield return new ChatDelta("status", "Scanning the filing with parallel fast worker agents...");
 
         var filingContext = await _context.BuildAsync(
-            companyId, accession, doc, node, filingType, scanIfMissing: true, ct: ct);
+            companyId, accession, doc, node, scanIfMissing: true, ct: ct);
         var messages = history
             .Select(message => new LlmMessage(
                 message.Role == "assistant" ? "assistant" : "user", message.Content))

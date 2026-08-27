@@ -2,7 +2,7 @@ using simple_bloomberg_terminal.Models.Enums;
 
 namespace simple_bloomberg_terminal.Models.ViewModels;
 
-/// <summary>Backs the phase-1 split-screen page (company picker + panes).</summary>
+/// <summary>Backs the split-screen extraction page.</summary>
 public class ExtractionIndexViewModel
 {
     public long? CompanyId { get; set; }
@@ -14,8 +14,8 @@ public class ExtractionIndexViewModel
 
     // When the page is opened to add proof for one existing source row, these prefill the left
     // cells (and the JS binds the row) so the user browses/connects against its current values.
-    public long? RevenueSourceId { get; set; }
-    public SourceType? SourceType { get; set; }
+    public long? SourceId { get; set; }
+    public string? Classification { get; set; }
     public string? Name { get; set; }
     public double? Value { get; set; }
     public double? Percentage { get; set; }
@@ -30,17 +30,16 @@ public class ExtractionIndexViewModel
 public class ReferenceRequest
 {
     public long CompanyId { get; set; }
-    public long? RevenueSourceId { get; set; }   // null => create a new source row on save
+    public long? SourceId { get; set; }   // null => create a new source row on save
 
     // Which node this row belongs to (REVENUE / COST / RISK), as the enum name. Decides the target
     // entity the row is written to.
-    public string Node { get; set; } = "REVENUE";
+    public string? Node { get; set; }
 
     // Left-cell values (written back to the source row, source of truth for the numbers).
     // Enums arrive as their string names from the browser (System.Text.Json web defaults bind
     // enums as numbers, so the controller parses these by name) — see ExtractionController.
-    // SourceType is the generic classification string: SourceType / CostBase / RiskScope per node.
-    public string SourceType { get; set; } = string.Empty;
+    public string Classification { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public double? Value { get; set; }
     public double? Percentage { get; set; }
@@ -61,10 +60,10 @@ public class ReferenceRequest
 }
 
 /// <summary>Returned to the page so it can bind a freshly-created row id.</summary>
-public record ReferenceResult(long RevenueSourceId);
+public record ReferenceResult(long SourceId);
 
 /// <summary>
-/// One AI-extracted revenue source proposed from a filing (Mode B: AI fills, human reviews). The
+/// One AI-extracted row proposed from a filing. The
 /// page drops these values into the left cells and its <see cref="Evidence"/> into the proof box, so
 /// the existing save path can freeze it — no new write path. Nothing is persisted until the human saves.
 /// </summary>
@@ -81,9 +80,10 @@ public record ExtractionSuggestion(
 /// hand a run whichever scan finished last.</param>
 public record FastWorkerScanResult(
     int Scanned, int Found, IReadOnlyList<ScannedHeading> Headings, string FastWorkerDigest = "",
-    IReadOnlyList<ExtractionChunkArtifact>? Corpus = null);
+    IReadOnlyList<ExtractionChunkArtifact>? Corpus = null,
+    IReadOnlyList<ExtractionSuggestion>? WorkerClaims = null);
 
-/// <summary>One heading the triage model saw, plus whether it chose to scan it.</summary>
+/// <summary>One parsed heading and whether a heading-based chunk containing it reached a worker.</summary>
 public record ScannedHeading(string Section, string Title, bool Picked);
 
 /// <summary>
@@ -93,9 +93,9 @@ public record ScannedHeading(string Section, string Title, bool Picked);
 public class SaveRequest
 {
     public long CompanyId { get; set; }
-    public long? RevenueSourceId { get; set; }   // bound row id for the active node; null => new row
-    public string Node { get; set; } = "REVENUE";
-    public string SourceType { get; set; } = string.Empty;   // classification per node (Source/Cost/Scope)
+    public long? SourceId { get; set; }   // bound row id for the active node; null => new row
+    public string? Node { get; set; }
+    public string Classification { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public double? Value { get; set; }
     public double? Percentage { get; set; }
@@ -120,7 +120,7 @@ public class SaveRequest
 public class SaveBatchRequest
 {
     public long CompanyId { get; set; }
-    public string Node { get; set; } = "REVENUE";
+    public string? Node { get; set; }
     public string? Accession { get; set; }   // filing the proofs came from (upserted by accession)
     public string? Form { get; set; }
 

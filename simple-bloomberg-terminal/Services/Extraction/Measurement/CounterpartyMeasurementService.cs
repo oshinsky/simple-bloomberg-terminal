@@ -36,7 +36,7 @@ public class CounterpartyMeasurementService
         string accession,
         string doc,
         int runs,
-        string? filingType = null,
+        string? form = null,
         bool strictCounterparties = false,
         Action<MeasureProgress>? onProgress = null,
         CancellationToken ct = default)
@@ -49,7 +49,7 @@ public class CounterpartyMeasurementService
             company?.Cik ?? "",
             accession,
             doc,
-            filingType);
+            form);
         var model = await ModelLabelAsync(ct);
         var runAt = DateTime.UtcNow;
         var keys = await _keys.GetAsync(ct);
@@ -96,7 +96,6 @@ public class CounterpartyMeasurementService
 
             var chunkItems = new Dictionary<int, string>();
             var chunkFound = new Dictionary<int, int>();
-            var fastWorkerClaims = new List<CounterpartyClaim>();
             var errors = new List<string>();
 
             var scanned = await fastWorkerScan.RunFastWorkerScanAsync(
@@ -104,11 +103,10 @@ public class CounterpartyMeasurementService
                 target.Accession,
                 target.Document,
                 node,
-                target.Form,
                 progress =>
                 {
                     // Fast-worker callbacks arrive concurrently from the six-wide scan pool.
-                    lock (fastWorkerClaims)
+                    lock (errors)
                     {
                         switch (progress.Phase)
                         {
@@ -124,7 +122,7 @@ public class CounterpartyMeasurementService
 
                             case FastWorkerChunkPhase.Error:
                                 var title = chunkItems.TryGetValue(progress.Index, out var failedItem)
-                                    ? $"Item {failedItem}"
+                                    ? failedItem
                                     : $"chunk {progress.Index + 1}";
                                 errors.Add($"{title}: {progress.Response ?? "Unknown worker error."}");
                                 onProgress?.Invoke(new MeasureProgress(
@@ -135,11 +133,6 @@ public class CounterpartyMeasurementService
                                 chunkFound[progress.Index] = progress.Found;
                                 onProgress?.Invoke(new MeasureProgress(
                                     run, "chunk-done", ChunkIndex: progress.Index, Found: progress.Found));
-                                var section = chunkItems.TryGetValue(progress.Index, out var item)
-                                    ? $"Item {item}"
-                                    : "?";
-                                fastWorkerClaims.AddRange(
-                                    CounterpartyLedgerCodec.ParseFastWorker(progress.Response, section));
                                 break;
                         }
                     }
@@ -148,6 +141,14 @@ public class CounterpartyMeasurementService
                 captureArtifacts: true,
                 ct);
 
+            var fastWorkerClaims = (scanned.WorkerClaims ?? [])
+                .Select(finding => new CounterpartyClaim(
+                    finding.RelatedCompany ?? finding.Name,
+                    finding.Classification,
+                    finding.Note,
+                    finding.Evidence,
+                    finding.Section))
+                .ToList();
             onProgress?.Invoke(new MeasureProgress(
                 run, "fast-worker-scan-done", FastWorkerClaims: fastWorkerClaims.Count));
 
@@ -165,7 +166,7 @@ public class CounterpartyMeasurementService
             {
                 foreach (var (index, found) in chunkFound)
                 {
-                    var section = chunkItems.TryGetValue(index, out var item) ? $"Item {item}" : "?";
+                    var section = chunkItems.TryGetValue(index, out var item) ? item : "?";
                     var key = (run, section);
                     sectionCandidates[key] = sectionCandidates.GetValueOrDefault(key) + found;
                 }
@@ -197,7 +198,6 @@ public class CounterpartyMeasurementService
                 target.Accession,
                 target.Document,
                 node,
-                target.Form,
                 scanIfMissing: false,
                 fastWorkerDigest: fastWorkerDigest,
                 ct: ct);
@@ -218,7 +218,7 @@ public class CounterpartyMeasurementService
                     "Measurement lead agent reached its output limit for {Company} run {Run}; responseChars={ResponseChars}",
                     target.Company, run, completion.Content.Length);
 
-            return (CounterpartyLedgerCodec.ParseLeadAgent(completion.Content), null);
+            return (LeadAgentLedgerCodec.Parse(completion.Content), null);
         }
         catch (Exception ex) when (
             !ct.IsCancellationRequested &&
@@ -239,7 +239,8 @@ public class CounterpartyMeasurementService
             var (provider, model) = await _llm.ResolveParsingAsync(ct);
             return $"{provider}/{model} | worker={CounterpartyPrompts.Version} | lead={MeasurementPrompts.Version}";
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        catch (Exception ex) when (
+            !ct.IsCancellationRequested && ex is HttpRequestException or TaskCanceledException)
         {
             return "unknown";
         }

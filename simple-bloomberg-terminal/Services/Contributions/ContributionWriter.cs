@@ -2,7 +2,7 @@ using simple_bloomberg_terminal.Models.Entities;
 using simple_bloomberg_terminal.Models.Enums;
 using simple_bloomberg_terminal.Repositories;
 
-namespace simple_bloomberg_terminal.Services.Extraction;
+namespace simple_bloomberg_terminal.Services.Contributions;
 
 // Identifies the contributor and whether writes can go live. The controller builds this context so the
 // writer remains independent of HTTP concerns.
@@ -58,14 +58,16 @@ public class ContributionWriter(
         if (rowId is { } id)
         {
             var existing = revenue.GetById(id);
-            if (existing is null) return null;
+            if (existing is null || existing.CompanyId != companyId) return null;
             // Non-reviewers propose a pending replacement; approval later retires the live row.
             if (!by.IsReviewer)
             {
                 var proposal = new RevenueSource(sourceType, name, companyId)
                 {
                     Value = value, Percentage = percentage, RelatedCompanyId = relatedCompanyId,
-                    Reference = proof.Reference, Evidence = proof.Evidence, FilingId = proof.FilingId,
+                    Reference = proof.Reference ?? existing.Reference,
+                    Evidence = proof.Evidence ?? existing.Evidence,
+                    FilingId = proof.FilingId ?? existing.FilingId,
                     DataSource = DataSource.MANUAL,
                     Status = ContributionStatus.Pending,
                     ContributedByUserId = by.UserId,
@@ -102,14 +104,16 @@ public class ContributionWriter(
         if (rowId is { } id)
         {
             var existing = cost.GetById(id);
-            if (existing is null) return null;
+            if (existing is null || existing.CompanyId != companyId) return null;
             // Non-reviewer edit: propose a superseding Pending copy, leave the live row untouched.
             if (!by.IsReviewer)
             {
                 var proposal = new CostSource(costBase, name, companyId)
                 {
                     Value = value, Percentage = percentage, RelatedCompanyId = relatedCompanyId,
-                    Reference = proof.Reference, Evidence = proof.Evidence, FilingId = proof.FilingId,
+                    Reference = proof.Reference ?? existing.Reference,
+                    Evidence = proof.Evidence ?? existing.Evidence,
+                    FilingId = proof.FilingId ?? existing.FilingId,
                     DataSource = DataSource.MANUAL,
                     Status = ContributionStatus.Pending,
                     ContributedByUserId = by.UserId,
@@ -145,14 +149,16 @@ public class ContributionWriter(
         if (rowId is { } id)
         {
             var existing = risks.GetById(id);
-            if (existing is null) return null;
+            if (existing is null || existing.CompanyId != companyId) return null;
             // Non-reviewer edit: propose a superseding Pending copy, leave the live row untouched.
             if (!by.IsReviewer)
             {
                 var proposal = new CompanyRisk(scope, name, companyId)
                 {
                     Note = note,
-                    Reference = proof.Reference, Evidence = proof.Evidence, FilingId = proof.FilingId,
+                    Reference = proof.Reference ?? existing.Reference,
+                    Evidence = proof.Evidence ?? existing.Evidence,
+                    FilingId = proof.FilingId ?? existing.FilingId,
                     DataSource = DataSource.MANUAL,
                     Status = ContributionStatus.Pending,
                     ContributedByUserId = by.UserId,
@@ -197,8 +203,8 @@ public class ContributionWriter(
             : (ExtractionNode.COST, nameof(CostBase.COGS));
 
         var exists = mirror == ExtractionNode.COST
-            ? cost.GetAll().Any(c => c.CompanyId == counterpartyId && c.RelatedCompanyId == ownerId)
-            : revenue.GetAll().Any(r => r.CompanyId == counterpartyId && r.RelatedCompanyId == ownerId);
+            ? cost.HasRelatedCompany(counterpartyId, ownerId)
+            : revenue.HasRelatedCompany(counterpartyId, ownerId);
         if (exists) return;
 
         UpsertRow(mirror, counterpartyId, null, classification, ownerName,

@@ -1095,7 +1095,7 @@
 | HTTP | GET |
 | Route source | `[Route("extraction")]` + `[Route("references/{sourceId:long}")]` |
 | View | — (JSON `{ reference, evidence, filing }` — filing is a "Form Accession" label, null when the row cites none or it was soft-deleted) |
-| Parameters | sourceId: long (route, constrained); node: string? (query string, optional — `REVENUE`\|`COST`\|`RISK`, default `REVENUE`; picks which source table the id resolves against) |
+| Parameters | sourceId: long (route, constrained); node: string (query, required — `REVENUE`\|`COST`\|`RISK`; picks which source table the id resolves against) |
 | Notes | The proof already on a source row, so the extraction page can fill its Reference/Evidence boxes when it binds the row. Returns 404 when the source row id is not found for the given node |
 
 ---
@@ -1108,8 +1108,8 @@
 | Action | Reference |
 | HTTP | POST |
 | Route source | `[Route("extraction")]` + `[Route("reference")]` |
-| View | — (JSON `ReferenceResult` record: RevenueSourceId) |
-| Parameters | JSON body (ReferenceRequest): companyId, revenueSourceId?, node (`REVENUE`\|`COST`\|`RISK`, default `REVENUE`), sourceType, name, value, percentage, note (RISK rows), relatedCompanyId, reference, evidence, filingAccessionNumber?, filingForm?, filingDate?, filingUrl? |
+| View | — (JSON `ReferenceResult` record: SourceId) |
+| Parameters | JSON body (ReferenceRequest): companyId, sourceId?, node (`REVENUE`\|`COST`\|`RISK`, required), classification, name, value, percentage, note (RISK rows), relatedCompanyId, reference, evidence, filingAccessionNumber?, filingForm?, filingDate?, filingUrl? |
 | Notes | Sets one row's proof: upserts the node's source row (RevenueSource / CostSource / CompanyRisk; create if new, DataSource=MANUAL) with its `reference` + `evidence`, plus the `FilingId` when filing metadata is supplied. Responses: 200 OK; 400 (missing companyId/name/evidence, or invalid classification); 404 (source row id not found). Superseded in the UI by `POST /extraction/save` (endpoint still present but no longer called) |
 
 ---
@@ -1122,9 +1122,9 @@
 | Action | Save |
 | HTTP | POST |
 | Route source | `[Route("extraction")]` + `[Route("save")]` |
-| View | — (JSON `{ revenueSourceId, proof }` — `proof` is true when an evidence quote was sent) |
-| Parameters | JSON body (SaveRequest): companyId, revenueSourceId?, node (`REVENUE`\|`COST`\|`RISK`, default `REVENUE`), sourceType, name, value, percentage, note, relatedCompanyId, reference, evidence, filingAccessionNumber?, filingForm?, filingDate?, filingUrl? |
-| Notes | Current UI save path — saves the whole extraction form in one request: `node` selects which entity the row upserts into (RevenueSource / CostSource / CompanyRisk; `note` backs RISK rows), and the row's single proof (reference + evidence + the filing upserted from the sent accession) is written with it. An omitted reference/evidence/filing keeps whatever citation the row already carries. Responses: 200 OK; 400 (bad companyId / missing name / invalid classification); 404 (revenueSourceId given but row not found) |
+| View | — (JSON `{ sourceId, proof }` — `proof` is true when an evidence quote was sent) |
+| Parameters | JSON body (SaveRequest): companyId, sourceId?, node (`REVENUE`\|`COST`\|`RISK`, required), classification, name, value, percentage, note, relatedCompanyId, reference, evidence, filingAccessionNumber?, filingForm?, filingDate?, filingUrl? |
+| Notes | Current UI save path — saves the whole extraction form in one request: `node` selects which entity the row upserts into (RevenueSource / CostSource / CompanyRisk; `note` backs RISK rows), and the row's single proof (reference + evidence + the filing upserted from the sent accession) is written with it. An omitted reference/evidence/filing keeps whatever citation the row already carries. Responses: 200 OK; 400 (bad companyId / missing name / invalid node or classification) |
 
 ---
 
@@ -1211,7 +1211,7 @@
 | HTTP | POST |
 | Route source | `[Route("extraction")]` + `[Route("auto-extract/{companyId:long}")]` |
 | View | — (JSON source suggestions for the human to confirm) |
-| Parameters | companyId: long (route, constrained); accession: string (query, required); doc: string (query, required); node: string? (query string, optional — `REVENUE`\|`COST`\|`RISK`, default `REVENUE`); form: string? (query string, optional — SEC form type, e.g. `10-K`, forwarded to the sec2md markdown sidecar) |
+| Parameters | companyId: long (route, constrained); accession: string (query, required); doc: string (query, required); node: string (query, required — `REVENUE`\|`COST`\|`RISK`) |
 | Notes | Mode B — AI (`IFastWorkerScanService`) reads one SEC filing and proposes rows + their proof for the active node (revenue / cost / company-risk) for the human to confirm; persists nothing (the page fills the form and the existing save path freezes proof). Responses: 200 OK; 400 (missing accession/doc); 404 (no such company); 503 (Claude unreachable) |
 
 ---
@@ -1225,8 +1225,8 @@
 | HTTP | POST |
 | Route source | `[Route("extraction")]` + `[Route("scan-auto/{companyId:long}")]` |
 | View | — (JSON `{ scanned, found }`) |
-| Parameters | companyId: long (route, constrained); accession: string (query, required); doc: string (query, required); node: string? (query string, optional — `REVENUE`\|`COST`\|`RISK`, default `REVENUE`); form: string? (query string, optional — SEC form type, e.g. `10-K`, forwarded to the sec2md markdown sidecar) |
-| Notes | Mode B (auto) — triages every bold heading by title, scans the AI-chosen ones in parallel, and stores the fast-worker digest for the lead agent; persists nothing to the DB. Replaces the hand-pick flow (`headings` + `scan-headings`). Responses: 200 OK; 400 (missing accession/doc); 404 (no such company); 503 (DeepSeek/SEC unreachable) |
+| Parameters | companyId: long (route, constrained); accession: string (query, required); doc: string (query, required); node: string (query, required — `REVENUE`\|`COST`\|`RISK`) |
+| Notes | Mode B (auto) — plans deterministic filing chunks, scans them in parallel, and stores the fast-worker digest for the lead agent; persists nothing to the DB. Responses: 200 OK; 400 (missing accession/doc or invalid node); 404 (no such company); 503 (AI provider or SEC unreachable) |
 
 ---
 
@@ -1239,7 +1239,7 @@
 | HTTP | POST |
 | Route source | `[Route("extraction")]` + `[Route("scan-auto-async/{companyId:long}")]` |
 | View | — (JSON `{ jobId }`) |
-| Parameters | companyId: long (route, constrained); accession: string (query, required); doc: string (query, required); node: string? (query string, optional — `REVENUE`\|`COST`\|`RISK`, default `REVENUE`); form: string? (query string, optional — SEC form type, e.g. `10-K`, forwarded to the sec2md markdown sidecar); companyName: string? (query string, optional); filingLabel: string? (query string, optional) |
+| Parameters | companyId: long (route, constrained); accession: string (query, required); doc: string (query, required); node: string (query, required — `REVENUE`\|`COST`\|`RISK`); form: string? (query string, optional display metadata); companyName: string? (query string, optional); filingLabel: string? (query string, optional) |
 | Notes | Mode B (async) — same scan as `scan-auto`, but detached: registers a background `ScanJob` in the in-memory `ScanJobStore`, fires the scan + an auto AI-summary chat turn on a background task (own DI scope), and returns the `jobId` at once so the page doesn't block. The user can navigate away; the global notification widget polls `scan-jobs` for the result. Persists nothing to the DB. Responses: 200 OK (`{ jobId }`); 400 (missing accession/doc); 404 (no such company) |
 
 ---

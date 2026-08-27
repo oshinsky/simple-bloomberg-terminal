@@ -40,8 +40,11 @@ public class FastWorkerScanService : IFastWorkerScanService
     }
 
     // FilingAnalysisContextService reads this node-specific digest for any lead-agent consumer.
-    public static string FastWorkerDigestKey(string accession, string doc, ExtractionNode node) =>
+    private static string FastWorkerDigestKey(string accession, string doc, ExtractionNode node) =>
         $"filing-findings:{node}:{accession}:{doc}";
+
+    public string? GetCachedDigest(string accession, string doc, ExtractionNode node) =>
+        _cache.TryGetValue(FastWorkerDigestKey(accession, doc, node), out string? digest) ? digest : null;
     private static string HeadingsKey(string accession, string doc, ExtractionNode node) =>
         $"filing-headings:{node}:{accession}:{doc}";
     private static readonly TimeSpan CacheFor = TimeSpan.FromMinutes(30);
@@ -54,28 +57,28 @@ public class FastWorkerScanService : IFastWorkerScanService
 
     // Flat fallback: fetches the filing, calls FilingSections to build chunks, then runs workers.
     public async Task<IReadOnlyList<ExtractionSuggestion>> ScanFullSectionsAsync(
-        long companyId, string accession, string doc, ExtractionNode node, string? filingType = null,
+        long companyId, string accession, string doc, ExtractionNode node,
         CancellationToken ct = default)
     {
-        var raw = await FetchRawAsync(companyId, accession, doc, filingType, ct);
+        var raw = await FetchRawAsync(companyId, accession, doc, ct);
         if (raw is null) return [];
         return await RunFastWorkerAgentsAsync(
-            FilingSections.Build(raw, FilingSections.ItemsFor(node)), node, null, false, ct);
+            FilingSections.Build(raw, FilingSections.ItemsFor(node)), node, null, false, null, ct);
     }
 
     // Supplies lead-agent context with a fast-worker digest. Calls RunFastWorkerScanAsync first, then
     // ScanFullSectionsAsync only when the targeted scan finds nothing.
     public async Task<string> GetOrCreateFastWorkerDigestAsync(
-        long companyId, string accession, string doc, ExtractionNode node, string? filingType = null,
+        long companyId, string accession, string doc, ExtractionNode node,
         CancellationToken ct = default)
     {
         if (_cache.TryGetValue(FastWorkerDigestKey(accession, doc, node), out string? cached)) return cached ?? "";
 
-        var scan = await RunFastWorkerScanAsync(companyId, accession, doc, node, filingType, ct: ct);
+        var scan = await RunFastWorkerScanAsync(companyId, accession, doc, node, ct: ct);
         if (scan.Found > 0 && _cache.TryGetValue(FastWorkerDigestKey(accession, doc, node), out string? scanned))
             return scanned ?? "";
 
-        var fastWorkerFindings = await ScanFullSectionsAsync(companyId, accession, doc, node, filingType, ct);
+        var fastWorkerFindings = await ScanFullSectionsAsync(companyId, accession, doc, node, ct);
         var fastWorkerDigest = fastWorkerFindings.Count > 0
             ? BuildFastWorkerDigest(fastWorkerFindings, node)
             : "";
@@ -86,12 +89,12 @@ public class FastWorkerScanService : IFastWorkerScanService
     // Main fast-worker scan entry point. Calls parsing, report, chunking, and worker helpers to build one
     // deterministic scan plan and a digest for the lead agent.
     public async Task<FastWorkerScanResult> RunFastWorkerScanAsync(
-        long companyId, string accession, string doc, ExtractionNode node, string? filingType = null,
+        long companyId, string accession, string doc, ExtractionNode node,
         Action<FastWorkerScanProgress>? onProgress = null, bool strictCounterparties = false,
         bool captureArtifacts = false,
         CancellationToken ct = default)
     {
-        var headings = await GetOrParseHeadingsAsync(companyId, accession, doc, node, filingType, ct);
+        var headings = await GetOrParseHeadingsAsync(companyId, accession, doc, node, ct);
         var items = FilingSections.ItemsFor(node);
 
         // Sparse heading detection is unreliable, so those Items use full-section chunks instead.
@@ -110,12 +113,12 @@ public class FastWorkerScanService : IFastWorkerScanService
         // or interpret the SEC's separately rendered financial-table reports.
         if (items.Contains("8"))
         {
-            if (await FetchRawAsync(companyId, accession, doc, filingType, ct) is { } raw)
+            if (await FetchRawAsync(companyId, accession, doc, ct) is { } raw)
                 chunks.AddRange(FilingSections.BuildSection(raw, "8", node));
         }
 
         // Fill remaining capacity with ranked chunks from Items whose headings were unreliable.
-        if (thin.Count > 0 && await FetchRawAsync(companyId, accession, doc, filingType, ct) is { } thinRaw)
+        if (thin.Count > 0 && await FetchRawAsync(companyId, accession, doc, ct) is { } thinRaw)
         {
             var remaining = Math.Max(0, FilingSections.MaxScanChunks - chunks.Count);
             var perItem = Math.Max(MinChunksPerThinItem, remaining / thin.Count);
@@ -127,18 +130,21 @@ public class FastWorkerScanService : IFastWorkerScanService
         chunks = FilingSections.RankChunks(chunks, node, FilingSections.MaxScanChunks);
 
         // Record which parsed headings reached a worker so the UI can show document coverage.
-        var keptTitles = chunks.SelectMany(c => c.Titles ?? []).ToHashSet(StringComparer.Ordinal);
+        var keptHeadings = chunks
+            .SelectMany(chunk => (chunk.Titles ?? []).Select(title => (chunk.Section, Title: title)))
+            .ToHashSet();
         var report = headings
-            .Select(h => new ScannedHeading(h.Section, h.Title,
-                h.Section == "Item 8" || thin.Contains(h.Section["Item ".Length..]) || keptTitles.Contains(h.Title)))
+            .Select(h => new ScannedHeading(h.Section, h.Title, keptHeadings.Contains((h.Section, h.Title))))
             .ToList();
 
         // Publish the complete plan before RunFastWorkerAgentsAsync begins sending progress events.
         onProgress?.Invoke(new FastWorkerScanProgress(FastWorkerChunkPhase.Planned, -1, 0,
             chunks.Select((c, i) => new FastWorkerChunkInfo(i, c.Item, c.Titles ?? [])).ToList()));
 
+        var workerClaims = new List<ExtractionSuggestion>();
         var fastWorkerFindings = chunks.Count > 0
-            ? await RunFastWorkerAgentsAsync(chunks, node, onProgress, strictCounterparties, ct)
+            ? await RunFastWorkerAgentsAsync(
+                chunks, node, onProgress, strictCounterparties, workerClaims, ct)
             : [];
         var fastWorkerDigest = fastWorkerFindings.Count > 0
             ? BuildFastWorkerDigest(fastWorkerFindings, node)
@@ -149,16 +155,16 @@ public class FastWorkerScanService : IFastWorkerScanService
                 index, chunk.Item, chunk.Titles ?? [], chunk.Text)).ToList()
             : null;
         return new FastWorkerScanResult(
-            chunks.Count, fastWorkerFindings.Count, report, fastWorkerDigest, corpus);
+            chunks.Count, fastWorkerFindings.Count, report, fastWorkerDigest, corpus, workerClaims);
     }
 
     // Calls FetchRawAsync and FilingSections.BuildHeadings; caches parsing shared by repeated runs.
     private async Task<List<FilingHeading>> GetOrParseHeadingsAsync(
-        long companyId, string accession, string doc, ExtractionNode node, string? filingType, CancellationToken ct)
+        long companyId, string accession, string doc, ExtractionNode node, CancellationToken ct)
     {
         if (_cache.TryGetValue(HeadingsKey(accession, doc, node), out List<FilingHeading>? cached) && cached is not null)
             return cached;
-        var raw = await FetchRawAsync(companyId, accession, doc, filingType, ct);
+        var raw = await FetchRawAsync(companyId, accession, doc, ct);
         var headings = raw is null
             ? []
             : FilingSections.BuildHeadings(raw, FilingSections.ItemsFor(node));
@@ -171,7 +177,7 @@ public class FastWorkerScanService : IFastWorkerScanService
 
     // Calls IStockApiClient for the primary EDGAR HTML and caches it for parsing and evidence display.
     private async Task<string?> FetchRawAsync(
-        long companyId, string accession, string doc, string? filingType, CancellationToken ct)
+        long companyId, string accession, string doc, CancellationToken ct)
     {
         if (_cache.TryGetValue(RawKey(accession, doc), out string? cached)) return cached;
         if (CompanyCik(companyId) is not { } cik) return null;
@@ -220,11 +226,12 @@ public class FastWorkerScanService : IFastWorkerScanService
     // Calls RunFastWorkerAgentAsync in parallel, then merges duplicate source names.
     private async Task<List<ExtractionSuggestion>> RunFastWorkerAgentsAsync(
         IReadOnlyList<FilingChunk> chunks, ExtractionNode node, Action<FastWorkerScanProgress>? onProgress,
-        bool strictCounterparties, CancellationToken ct)
+        bool strictCounterparties, List<ExtractionSuggestion>? workerClaims, CancellationToken ct)
     {
         using var gate = new SemaphoreSlim(MaxParallelFastWorkers);
         var perChunk = await Task.WhenAll(chunks.Select((c, i) =>
             RunFastWorkerAgentAsync(c, i, node, gate, onProgress, strictCounterparties, ct)));
+        workerClaims?.AddRange(perChunk.SelectMany(claims => claims));
 
         var byName = new Dictionary<string, ExtractionSuggestion>(StringComparer.OrdinalIgnoreCase);
         foreach (var list in perChunk)
@@ -335,7 +342,8 @@ public class FastWorkerScanService : IFastWorkerScanService
                 FastWorkerChunkPhase.Done, index, found.Count, null, transcript, answer));
             return found;
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        catch (Exception ex) when (
+            !ct.IsCancellationRequested && ex is HttpRequestException or TaskCanceledException)
         {
             onProgress?.Invoke(new FastWorkerScanProgress(
                 FastWorkerChunkPhase.Error, index, 0, null, transcript, ex.Message));

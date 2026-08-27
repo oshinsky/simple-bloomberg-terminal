@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using simple_bloomberg_terminal.Data;
 using simple_bloomberg_terminal.Models.Entities;
+using simple_bloomberg_terminal.Models.Enums;
 
 namespace simple_bloomberg_terminal.Repositories;
 
@@ -22,4 +23,9 @@ public class RevenueSourceRepository(AppDbContext db)
     // Company's review page shows the counterparty, who proposed each pending row, and its proof filing.
     protected override IQueryable<RevenueSource> PendingByCompanyIncludes(IQueryable<RevenueSource> q) =>
         q.Include(r => r.RelatedCompany).Include(r => r.ContributedBy).Include(r => r.Filing);
+
+    public bool HasRelatedCompany(long companyId, long relatedCompanyId) =>
+        Db.RevenueSources.Any(row =>
+            row.CompanyId == companyId && row.RelatedCompanyId == relatedCompanyId &&
+            row.DeletedAt == null && row.Status != ContributionStatus.Rejected);
 }

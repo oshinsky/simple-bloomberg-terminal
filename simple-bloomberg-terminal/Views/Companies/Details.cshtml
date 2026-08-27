@@ -904,7 +904,10 @@ window.refreshCompanyProfile = async function (companyId) {
         try {
             resp = await fetch('/extraction/discover-related', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'RequestVerificationToken': document.querySelector('input[name="__RequestVerificationToken"]')?.value
+                },
                 body: JSON.stringify({ companyId, side, segments, valued })
             });
         } catch {
@@ -1073,7 +1076,10 @@ window.refreshCompanyProfile = async function (companyId) {
         try {
             const resp = await fetch('/extraction/link-counterparty', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'RequestVerificationToken': document.querySelector('input[name="__RequestVerificationToken"]')?.value
+                },
                 body: JSON.stringify({
                     companyId,
                     name: s.name,

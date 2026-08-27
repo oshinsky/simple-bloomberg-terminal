@@ -11,6 +11,7 @@ global using simple_bloomberg_terminal.Services.Clients.IndexSrc;
 global using simple_bloomberg_terminal.Services.Extraction;
 global using simple_bloomberg_terminal.Services.Extraction.Chat;
 global using simple_bloomberg_terminal.Services.Extraction.Measurement;
+global using simple_bloomberg_terminal.Services.Contributions;
 global using simple_bloomberg_terminal.Services.Discovery;
 global using simple_bloomberg_terminal.Services.Provisioning;
 global using simple_bloomberg_terminal.Services.Indices;

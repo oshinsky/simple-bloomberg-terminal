@@ -1,5 +1,4 @@
 using System.Text;
-using Microsoft.Extensions.Caching.Memory;
 using simple_bloomberg_terminal.Models.Enums;
 using simple_bloomberg_terminal.Repositories;
 
@@ -13,21 +12,19 @@ public sealed class FilingAnalysisContextService : IFilingAnalysisContextService
     private readonly ICompanyRepository _companies;
     private readonly IStockApiClient _client;
     private readonly IFastWorkerScanService _fastWorkerScan;
-    private readonly IMemoryCache _cache;
 
     public FilingAnalysisContextService(
         ICompanyRepository companies, IStockApiClient client,
-        IFastWorkerScanService fastWorkerScan, IMemoryCache cache)
+        IFastWorkerScanService fastWorkerScan)
     {
         _companies = companies;
         _client = client;
         _fastWorkerScan = fastWorkerScan;
-        _cache = cache;
     }
 
     public async Task<string> BuildAsync(
         long companyId, string accession, string doc, ExtractionNode node,
-        string? filingType = null, bool scanIfMissing = true,
+        bool scanIfMissing = true,
         string? fastWorkerDigest = null, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(accession) || string.IsNullOrWhiteSpace(doc)) return "";
@@ -36,11 +33,8 @@ public sealed class FilingAnalysisContextService : IFilingAnalysisContextService
             ? fastWorkerDigest
             : scanIfMissing
                 ? await _fastWorkerScan.GetOrCreateFastWorkerDigestAsync(
-                    companyId, accession, doc, node, filingType, ct)
-                : _cache.TryGetValue(
-                    FastWorkerScanService.FastWorkerDigestKey(accession, doc, node), out string? cached)
-                    ? cached ?? ""
-                    : "";
+                    companyId, accession, doc, node, ct)
+                : _fastWorkerScan.GetCachedDigest(accession, doc, node) ?? "";
         var filingContext = !string.IsNullOrEmpty(digest)
             ? digest
             : await RawFallbackAsync(companyId, accession, doc, node);

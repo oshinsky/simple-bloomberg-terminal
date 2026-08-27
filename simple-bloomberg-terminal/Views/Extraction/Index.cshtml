@@ -134,12 +134,12 @@
         classes = ViewBag.ClassOptions
     }))
 </script>
-@if (Model.RevenueSourceId is { } prefillId)
+@if (Model.SourceId is { } prefillId)
 {
     <script type="application/json" id="prefillData">
         @Html.Raw(System.Text.Json.JsonSerializer.Serialize(new {
             id = prefillId,
-            sourceType = Model.SourceType?.ToString(),
+            classification = Model.Classification,
             name = Model.Name,
             value = Model.Value,
             percentage = Model.Percentage
@@ -505,7 +505,7 @@
 
     function fillCells(r) {
         // The classification field is named differently per node in the DTO (sourceType/costBase/scope).
-        const cls = r ? (r.sourceType ?? r.costBase ?? r.scope) : null;
+        const cls = r ? (r.classification ?? r.sourceType ?? r.costBase ?? r.scope) : null;
         $('f_sourceType').value = cls != null ? cls : ($('f_sourceType').options[0]?.value ?? '');
         $('f_name').value = r ? (r.name ?? '') : '';
         $('f_value').value = r && r.value != null ? r.value : '';
@@ -630,9 +630,9 @@
         const evidence = $('f_evidence').value.trim();
         const body = {
             companyId: id,
-            revenueSourceId: currentRowId,
+            sourceId: currentRowId,
             node,
-            sourceType: $('f_sourceType').value,   // generic classification (SourceType/CostBase/RiskScope)
+            classification: $('f_sourceType').value,
             name: $('f_name').value,
             value: numOrNull($('f_value').value),
             percentage: numOrNull($('f_percentage').value),
@@ -655,8 +655,8 @@
             });
             if (!res.ok) { status.textContent = 'Save failed: ' + await res.text(); return; }
             const r = await res.json();
-            currentRowId = r.revenueSourceId;            // bind the (possibly new) row
-            status.textContent = `Saved row #${r.revenueSourceId}` + (r.proof ? ' · proof frozen' : ' · no proof attached');
+            currentRowId = r.sourceId;            // bind the (possibly new) row
+            status.textContent = `Saved row #${r.sourceId}` + (r.proof ? ' · proof frozen' : ' · no proof attached');
             loadExistingProof(currentRowId);             // refresh the proof readout
         } catch (e) { status.textContent = 'Network error: ' + e.message; }
     }

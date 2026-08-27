@@ -7,7 +7,7 @@ public interface IFilingAnalysisContextService
 {
     Task<string> BuildAsync(
         long companyId, string accession, string doc, ExtractionNode node,
-        string? filingType = null, bool scanIfMissing = true,
+        bool scanIfMissing = true,
         string? fastWorkerDigest = null, CancellationToken ct = default);
 
 }

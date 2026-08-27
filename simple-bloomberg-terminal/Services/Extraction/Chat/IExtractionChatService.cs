@@ -9,6 +9,6 @@ public interface IExtractionChatService
 {
     IAsyncEnumerable<ChatDelta> StreamReplyAsync(
         long companyId, string accession, string doc, ExtractionNode node,
-        IReadOnlyList<ChatMessage> history, string? filingType = null,
+        IReadOnlyList<ChatMessage> history,
         CancellationToken ct = default);
 }

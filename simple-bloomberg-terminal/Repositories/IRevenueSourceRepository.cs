@@ -9,6 +9,7 @@ public interface IRevenueSourceRepository
     IEnumerable<RevenueSource> GetAllPending();
     IEnumerable<RevenueSource> GetPendingByCompany(long companyId);
     RevenueSource? GetById(long id);
+    bool HasRelatedCompany(long companyId, long relatedCompanyId);
     IEnumerable<RevenueSource> Search(string? term);
     void Add(RevenueSource entity);
     void Update(RevenueSource entity);

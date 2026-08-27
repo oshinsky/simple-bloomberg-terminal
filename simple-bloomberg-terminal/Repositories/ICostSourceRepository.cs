@@ -9,6 +9,7 @@ public interface ICostSourceRepository
     IEnumerable<CostSource> GetAllPending();
     IEnumerable<CostSource> GetPendingByCompany(long companyId);
     CostSource? GetById(long id);
+    bool HasRelatedCompany(long companyId, long relatedCompanyId);
     IEnumerable<CostSource> Search(string? term);
     void Add(CostSource entity);
     void Update(CostSource entity);

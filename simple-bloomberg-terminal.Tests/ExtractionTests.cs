@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.DependencyInjection;
 using simple_bloomberg_terminal.Data;
 using simple_bloomberg_terminal.Models.Entities;
@@ -16,7 +17,23 @@ public class ExtractionTests : ApiTestBase
 {
     private const long AppleId = CustomWebApplicationFactory.CompanyDeletableId;
 
-    private record RefResult(long RevenueSourceId);
+    private record RefResult(long SourceId);
+
+    private async Task<HttpResponseMessage> PostExtractionAsync(string url, object body)
+    {
+        var html = await Client.GetStringAsync("/extraction");
+        var match = Regex.Match(html,
+            "<input[^>]*name=\"__RequestVerificationToken\"[^>]*value=\"([^\"]+)\"",
+            RegexOptions.IgnoreCase);
+        Assert.True(match.Success, "Extraction page did not render an antiforgery token.");
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, url)
+        {
+            Content = JsonContent.Create(body)
+        };
+        request.Headers.Add("RequestVerificationToken", WebUtility.HtmlDecode(match.Groups[1].Value));
+        return await Client.SendAsync(request);
+    }
 
     private Task<long> RefreshAppleAndGetRevenueRowId()
     {
@@ -34,11 +51,12 @@ public class ExtractionTests : ApiTestBase
     {
         var rowId = await RefreshAppleAndGetRevenueRowId();
 
-        var resp = await Client.PostAsJsonAsync("/extraction/reference", new
+        var resp = await PostExtractionAsync("/extraction/reference", new
         {
             companyId = AppleId,
-            revenueSourceId = rowId,
-            sourceType = "SEGMENT",
+            sourceId = rowId,
+            node = "REVENUE",
+            classification = "SEGMENT",
             name = "Revenue 2023",
             value = 383_000_000_000d,
             reference = "Item 7. Management's Discussion",
@@ -46,7 +64,7 @@ public class ExtractionTests : ApiTestBase
         });
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
         var result = await resp.Content.ReadFromJsonAsync<RefResult>();
-        Assert.Equal(rowId, result!.RevenueSourceId);
+        Assert.Equal(rowId, result!.SourceId);
 
         using var scope = Factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -63,11 +81,12 @@ public class ExtractionTests : ApiTestBase
         var rowId = await RefreshAppleAndGetRevenueRowId();
 
         async Task<RefResult> Ref(string evidence) =>
-            (await (await Client.PostAsJsonAsync("/extraction/reference", new
+            (await (await PostExtractionAsync("/extraction/reference", new
             {
                 companyId = AppleId,
-                revenueSourceId = rowId,
-                sourceType = "SEGMENT",
+                sourceId = rowId,
+                node = "REVENUE",
+                classification = "SEGMENT",
                 name = "Revenue 2023",
                 reference = "Item 8. Financial Statements",
                 evidence
@@ -76,7 +95,7 @@ public class ExtractionTests : ApiTestBase
         var first = await Ref("first proof");
         var second = await Ref("second proof");
 
-        Assert.Equal(first.RevenueSourceId, second.RevenueSourceId);   // same row reused
+        Assert.Equal(first.SourceId, second.SourceId);   // same row reused
 
         using var scope = Factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -87,11 +106,12 @@ public class ExtractionTests : ApiTestBase
     [Fact]
     public async Task Reference_NoSourceRow_CreatesTheRowWithItsProof()
     {
-        var resp = await Client.PostAsJsonAsync("/extraction/reference", new
+        var resp = await PostExtractionAsync("/extraction/reference", new
         {
             companyId = AppleId,
-            revenueSourceId = (long?)null,   // user-created row
-            sourceType = "PRODUCT",
+            sourceId = (long?)null,   // user-created row
+            node = "REVENUE",
+            classification = "PRODUCT",
             name = "Services",
             value = 85_000_000_000d,
             reference = "Item 8, Segment note",
@@ -99,11 +119,11 @@ public class ExtractionTests : ApiTestBase
         });
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
         var result = await resp.Content.ReadFromJsonAsync<RefResult>();
-        Assert.True(result!.RevenueSourceId > 0);
+        Assert.True(result!.SourceId > 0);
 
         using var scope = Factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var row = db.RevenueSources.Single(r => r.Id == result.RevenueSourceId);
+        var row = db.RevenueSources.Single(r => r.Id == result.SourceId);
         Assert.Equal("Services", row.Name);
         Assert.Equal(DataSource.MANUAL, row.DataSource);
         Assert.Equal("services revenue 85B", row.Evidence);
@@ -113,17 +133,18 @@ public class ExtractionTests : ApiTestBase
     public async Task References_AfterReferencing_ReturnsTheRowsProof()
     {
         var rowId = await RefreshAppleAndGetRevenueRowId();
-        await Client.PostAsJsonAsync("/extraction/reference", new
+        await PostExtractionAsync("/extraction/reference", new
         {
             companyId = AppleId,
-            revenueSourceId = rowId,
-            sourceType = "SEGMENT",
+            sourceId = rowId,
+            node = "REVENUE",
+            classification = "SEGMENT",
             name = "Revenue 2023",
             reference = "Item 7A. Quantitative Disclosures",
             evidence = "val 383000000000"
         });
 
-        var proof = await Client.GetFromJsonAsync<RefRow>($"/extraction/references/{rowId}");
+        var proof = await Client.GetFromJsonAsync<RefRow>($"/extraction/references/{rowId}?node=REVENUE");
         Assert.Equal("Item 7A. Quantitative Disclosures", proof!.Reference);
         Assert.Equal("val 383000000000", proof.Evidence);
         Assert.Null(proof.Filing);
@@ -134,15 +155,76 @@ public class ExtractionTests : ApiTestBase
     [Fact]
     public async Task Reference_MissingEvidence_Returns400()
     {
-        var resp = await Client.PostAsJsonAsync("/extraction/reference", new
+        var resp = await PostExtractionAsync("/extraction/reference", new
         {
             companyId = AppleId,
-            revenueSourceId = (long?)null,
-            sourceType = "SEGMENT",
+            sourceId = (long?)null,
+            node = "REVENUE",
+            classification = "SEGMENT",
             name = "X",
             evidence = ""
         });
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task Save_MissingNode_Returns400()
+    {
+        var resp = await PostExtractionAsync("/extraction/save", new
+        {
+            companyId = AppleId,
+            classification = "SEGMENT",
+            name = "Missing node"
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        Assert.Contains("Invalid extraction node", await resp.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task Save_RowFromAnotherCompany_Returns400WithoutChangingIt()
+    {
+        var rowId = await RefreshAppleAndGetRevenueRowId();
+        var resp = await PostExtractionAsync("/extraction/save", new
+        {
+            companyId = CustomWebApplicationFactory.CompanyBlockedId,
+            sourceId = rowId,
+            node = "REVENUE",
+            classification = "PRODUCT",
+            name = "Should not be written"
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        using var scope = Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.NotEqual("Should not be written", db.RevenueSources.Single(row => row.Id == rowId).Name);
+    }
+
+    [Fact]
+    public void NonReviewerEdit_PreservesExistingProofOnPendingReplacement()
+    {
+        using var scope = Factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var existing = new RevenueSource(SourceType.SEGMENT, "Existing", AppleId)
+        {
+            Reference = "Item 7",
+            Evidence = "Original evidence",
+            DataSource = DataSource.MANUAL,
+            Status = ContributionStatus.Approved
+        };
+        db.RevenueSources.Add(existing);
+        db.SaveChanges();
+
+        var writer = scope.ServiceProvider.GetRequiredService<IContributionWriter>();
+        var proposalId = writer.UpsertRow(
+            ExtractionNode.REVENUE, AppleId, existing.Id, "PRODUCT", "Edited", null, null, null, null,
+            new Contributor(false, null));
+
+        var proposal = db.RevenueSources.Single(row => row.Id == proposalId);
+        Assert.Equal(ContributionStatus.Pending, proposal.Status);
+        Assert.Equal(existing.Id, proposal.SupersedesId);
+        Assert.Equal("Item 7", proposal.Reference);
+        Assert.Equal("Original evidence", proposal.Evidence);
     }
 
     [Fact]
@@ -151,9 +233,9 @@ public class ExtractionTests : ApiTestBase
         const string accession = "0000000000-99-000777";
         var rowId = await RefreshAppleAndGetRevenueRowId();
 
-        Task<HttpResponseMessage> RefWithFiling() => Client.PostAsJsonAsync("/extraction/reference", new
+        Task<HttpResponseMessage> RefWithFiling() => PostExtractionAsync("/extraction/reference", new
         {
-            companyId = AppleId, revenueSourceId = rowId, sourceType = "SEGMENT", name = "Revenue 2023",
+            companyId = AppleId, sourceId = rowId, node = "REVENUE", classification = "SEGMENT", name = "Revenue 2023",
             reference = "Item 8", evidence = "snap",
             filingAccessionNumber = accession, filingForm = "10-K", filingDate = "2023-11-03", filingUrl = "http://x"
         });

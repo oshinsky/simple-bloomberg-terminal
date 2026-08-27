@@ -24,8 +24,8 @@ Measure.cshtml
 4. `FilingSections.cs` flattens HTML without interpreting tables, detects SEC Items and headings,
    preserves relevant text, and deterministically ranks bounded chunks.
 5. `FastWorkerScanService.cs` sends chunks to six parallel fast worker agents using the shared production
-   COST direction in `CounterpartyPrompts.cs`. `CounterpartyLedgerCodec.cs` parses their `sources` JSON, and the service
-   reduces the findings into one fast-worker digest.
+   COST direction in `CounterpartyPrompts.cs`. The scan returns typed worker claims and reduces them into
+   one fast-worker digest.
 6. `FilingAnalysisContextService.cs` supplies that run's filing digest, and
    `LeadAgentRunner` executes the fixed measurement contract from `MeasurementPrompts.cs`. The lead
    returns an `items` ledger. Measurement does not pass through the conversational chat service.
@@ -47,7 +47,7 @@ CounterpartyMeasurementService.cs           [MEASUREMENT]
     │   ├─ FilingSections.cs                 [SHARED]
     │   └─ CounterpartyPrompts.cs            [SHARED: COST/REVENUE fast-worker prompt]
     │
-    ├─ CounterpartyLedgerCodec.cs            [MEASUREMENT]
+    ├─ MeasurementSupport.cs                 [MEASUREMENT]
     ├─ FilingAnalysisContextService.cs       [SHARED CONTEXT]
     ├─ LeadAgentRunner.cs                    [SHARED EXECUTION]
     ├─ MeasurementPrompts.cs                 [MEASUREMENT: lead-agent ledger contract]
@@ -77,10 +77,8 @@ and scoring.
 | `Services/Extraction/Chat/ExtractionChatService.cs` | Adds interactive conversation and save-block prompts; measurement does not depend on it. |
 | `Services/Extraction/CounterpartyPrompts.cs` | Owns the directional COST/REVENUE fast-worker contract. |
 | `MeasurementPrompts.cs` | Owns the versioned measurement lead-agent contract. |
-| `CounterpartyLedgerCodec.cs` | Parses fast-worker and lead-agent JSON into the same ledger model. |
 | `CounterpartyModels.cs` | Defines run artifacts and measurement output records. |
-| `CounterpartyIdentity.cs` | Normalizes counterparty identities for repeatability. |
-| `EvidenceIndex.cs` | Checks quotes against the exact worker corpus. |
+| `MeasurementSupport.cs` | Parses lead-agent ledger JSON, normalizes counterparty identities, and checks evidence against the worker corpus. |
 | `MeasurementCalculator.cs` | Calculates all metrics without network, UI, or model access. |
 
 ## Measurement rules
@@ -104,4 +102,3 @@ Before scoring, the measurement layer normalizes case, punctuation, whitespace, 
 The raw name is retained for auditing. Ambiguous aliases such as `AMD` and `Advanced Micro Devices`
 are not merged automatically because an incorrect match could artificially improve the result. A
 company's normalized identity and its relationship direction are measured separately.
-

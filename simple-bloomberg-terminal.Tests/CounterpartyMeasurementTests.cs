@@ -5,22 +5,6 @@ namespace simple_bloomberg_terminal.Tests;
 public class CounterpartyMeasurementTests
 {
     [Fact]
-    public void FastWorkerCodec_ParsesTheMeasurementSchema()
-    {
-        const string json = """
-            {"sources":[{"evidence":"We purchase chips from Acme Ltd.","name":"Acme Ltd.",
-            "related_company":"Acme Ltd.","classification":"SUPPLIER","note":"chips"}]}
-            """;
-
-        var item = Assert.Single(CounterpartyLedgerCodec.ParseFastWorker(json, "Item 1"));
-
-        Assert.Equal("Acme Ltd.", item.Counterparty);
-        Assert.Equal("SUPPLIER", item.Direction);
-        Assert.Equal("chips", item.What);
-        Assert.Equal("Item 1", item.Section);
-    }
-
-    [Fact]
     public void LeadAgentCodec_SalvagesCompleteItemsFromATruncatedReply()
     {
         const string truncated = """
@@ -28,7 +12,7 @@ public class CounterpartyMeasurementTests
             "direction":"SUPPLIER","what":"chips","section":"Item 1"},{"evidence":"unfinished
             """;
 
-        var item = Assert.Single(CounterpartyLedgerCodec.ParseLeadAgent(truncated));
+        var item = Assert.Single(LeadAgentLedgerCodec.Parse(truncated));
 
         Assert.Equal("Acme", item.Counterparty);
     }

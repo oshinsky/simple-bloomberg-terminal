@@ -9,7 +9,8 @@ This document records the current direction for SEC extraction.
 - Revenue and cost extraction identify named counterparties and cite filing evidence.
 - Risk extraction identifies material risks and cites filing evidence.
 - Chat and measurement remain the two consumers of the shared extraction context.
-- Contributions are persisted through `IContributionWriter`, preserving the reviewer gate and citations.
+- Contributions are persisted through `Services/Contributions/ContributionWriter.cs`, whose
+  `IContributionWriter` contract preserves the reviewer gate and citations.
 
 ## Explicitly excluded
 

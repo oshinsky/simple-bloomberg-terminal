@@ -92,6 +92,8 @@ reply buffers. It is a singleton because work continues after the starting HTTP 
 7. calculates repeatability, evidence presence, and retention.
 
 The versioned measurement prompt and pure scoring code live in `Services/Extraction/Measurement`.
+`MeasurementSupport.cs` groups the small stateless helpers for ledger parsing, identity normalization,
+and evidence lookup.
 The measurement contract is independent of conversational save prompts.
 Unlike interactive chat, the measurement lead step uses one non-streaming completion capped at 16,000
 output tokens. It retries once when the provider times out or ends the HTTP response prematurely, logs
@@ -110,8 +112,8 @@ Views/Extraction/Measure.cshtml
 ## Persistence and enrichment
 
 Extraction itself proposes records; it does not persist them automatically. Confirmed `save` blocks
-are sent through `ExtractionController` to `ContributionWriter`, which writes `RevenueSource`,
-`CostSource`, or `CompanyRisk` records with filing provenance and evidence.
+are sent through `ExtractionController` to `Services/Contributions/ContributionWriter.cs`, which writes
+`RevenueSource`, `CostSource`, or `CompanyRisk` records with filing provenance and evidence.
 
 Named counterparties can be resolved or provisioned through the discovery/provisioning services and
 linked with reciprocal revenue/cost relationships. This happens after extraction and remains separate

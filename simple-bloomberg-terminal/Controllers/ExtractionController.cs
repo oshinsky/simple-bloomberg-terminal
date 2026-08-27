@@ -13,10 +13,8 @@ using simple_bloomberg_terminal.Repositories;
 namespace simple_bloomberg_terminal.Controllers;
 
 /// <summary>
-/// Phase-1 extraction UI (revenue only, for now): a split screen whose right pane is the JSON
-/// returned by <c>POST /api/stock/refresh/{companyId}</c> and whose left cells bind to a
-/// <see cref="RevenueSource"/> row. Saving freezes the row's proof onto the row itself: one
-/// Reference (where in the document), one Evidence (the verbatim quote), and the source Filing.
+/// Extraction UI, contribution persistence, counterparty discovery, and filing scan/chat endpoints.
+/// Measurement endpoints live in <see cref="ExtractionMeasurementController"/>.
 /// </summary>
 [Route("extraction")]
 // Any authenticated user — the keyed features run on the USER's own API keys (bring-your-own), so a
@@ -38,8 +36,6 @@ public class ExtractionController : Controller
     private readonly RediscoverJobStore _rediscoverJobs;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IUserApiKeyProvider _keys;
-    private readonly CounterpartyMeasurementService _measure;
-    private readonly MeasureJobStore _measureJobs;
 
     public ExtractionController(
         IRevenueSourceRepository revenue,
@@ -54,9 +50,7 @@ public class ExtractionController : Controller
         ScanJobStore jobs,
         RediscoverJobStore rediscoverJobs,
         IServiceScopeFactory scopeFactory,
-        IUserApiKeyProvider keys,
-        CounterpartyMeasurementService measure,
-        MeasureJobStore measureJobs)
+        IUserApiKeyProvider keys)
     {
         _revenue = revenue;
         _cost = cost;
@@ -71,8 +65,6 @@ public class ExtractionController : Controller
         _rediscoverJobs = rediscoverJobs;
         _scopeFactory = scopeFactory;
         _keys = keys;
-        _measure = measure;
-        _measureJobs = measureJobs;
     }
 
     // Write the same 424 "missing key" envelope the global filter produces, for STREAMING actions
@@ -88,6 +80,14 @@ public class ExtractionController : Controller
 
     private static ExtractionNode ParseNode(string? node) =>
         Enum.TryParse<ExtractionNode>(node, true, out var n) ? n : ExtractionNode.REVENUE;
+
+    private static bool TryParseNode(string? value, out ExtractionNode node)
+    {
+        node = default;
+        return !string.IsNullOrWhiteSpace(value) &&
+               Enum.TryParse(value, true, out node) &&
+               Enum.IsDefined(node);
+    }
 
     // The AI actions below all run through IChatLlm, which routes on the user's stored
     // ParsingProvider — so the key to verify up front is THAT provider's, not DeepSeek's. Checking
@@ -119,9 +119,9 @@ public class ExtractionController : Controller
         // deep-link comes from a RevenueSource.)
         if (parsedNode == ExtractionNode.REVENUE && revenueSourceId is { } rowId && _revenue.GetById(rowId) is { } row)
         {
-            vm.RevenueSourceId = row.Id;
+            vm.SourceId = row.Id;
             vm.CompanyId = row.CompanyId;
-            vm.SourceType = row.SourceType;
+            vm.Classification = row.SourceType.ToString();
             vm.Name = row.Name;
             vm.Value = row.Value;
             vm.Percentage = row.Percentage;
@@ -149,7 +149,8 @@ public class ExtractionController : Controller
     [HttpGet, Route("references/{sourceId:long}")]
     public IActionResult References(long sourceId, [FromQuery] string? node)
     {
-        var proof = ParseNode(node) switch
+        if (!TryParseNode(node, out var parsedNode)) return BadRequest("Invalid extraction node.");
+        var proof = parsedNode switch
         {
             ExtractionNode.COST => _cost.GetById(sourceId) is { } c ? Dto(c.Reference, c.Evidence, c.Filing) : null,
             ExtractionNode.RISK => _risks.GetById(sourceId) is { } k ? Dto(k.Reference, k.Evidence, k.Filing) : null,
@@ -170,18 +171,18 @@ public class ExtractionController : Controller
 
     // Set this row's reference + evidence (and the filing they came from), creating the row when the
     // page hasn't bound one yet.
-    [HttpPost, Route("reference")]
+    [HttpPost, Route("reference"), ValidateAntiForgeryToken]
     public IActionResult Reference([FromBody] ReferenceRequest req)
     {
         if (req is null || req.CompanyId <= 0) return BadRequest("CompanyId required.");
         if (string.IsNullOrWhiteSpace(req.Name)) return BadRequest("Name required.");
         if (string.IsNullOrWhiteSpace(req.Evidence)) return BadRequest("Select proof text first.");
-        var node = ParseNode(req.Node);
+        if (!TryParseNode(req.Node, out var node)) return BadRequest("Invalid extraction node.");
 
         // Proof filing: upsert by accession when the proof came from a filing document.
         var filingId = ResolveFilingId(req.CompanyId, req.FilingAccessionNumber, req.FilingForm, req.FilingDate, req.FilingUrl);
 
-        var rowId = _writer.UpsertRow(node, req.CompanyId, req.RevenueSourceId, req.SourceType,
+        var rowId = _writer.UpsertRow(node, req.CompanyId, req.SourceId, req.Classification,
             req.Name, req.Value, req.Percentage, req.Note, req.RelatedCompanyId, By,
             req.Reference, req.Evidence, filingId);
         if (rowId is null) return BadRequest("Could not save the row (check the classification value).");
@@ -190,33 +191,33 @@ public class ExtractionController : Controller
     }
 
     // One button to save the whole form: the row's values plus its single reference + evidence.
-    [HttpPost, Route("save")]
+    [HttpPost, Route("save"), ValidateAntiForgeryToken]
     public IActionResult Save([FromBody] SaveRequest req)
     {
         if (req is null || req.CompanyId <= 0) return BadRequest("CompanyId required.");
         if (string.IsNullOrWhiteSpace(req.Name)) return BadRequest("Name required.");
-        var node = ParseNode(req.Node);
+        if (!TryParseNode(req.Node, out var node)) return BadRequest("Invalid extraction node.");
 
         var filingId = ResolveFilingId(req.CompanyId, req.FilingAccessionNumber, req.FilingForm, req.FilingDate, req.FilingUrl);
-        var rowId = _writer.UpsertRow(node, req.CompanyId, req.RevenueSourceId, req.SourceType,
+        var rowId = _writer.UpsertRow(node, req.CompanyId, req.SourceId, req.Classification,
             req.Name, req.Value, req.Percentage, req.Note, req.RelatedCompanyId, By,
             req.Reference, req.Evidence, filingId);
         if (rowId is null) return BadRequest("Could not save the row (check the classification value).");
 
-        return Json(new { revenueSourceId = rowId.Value, proof = !string.IsNullOrWhiteSpace(req.Evidence) });
+        return Json(new { sourceId = rowId.Value, proof = !string.IsNullOrWhiteSpace(req.Evidence) });
     }
 
     // Batch save from the notification widget's chat: persist every ticked AI ```save``` block in one
     // call. Each item upserts its source row (proof included); items naming a counterparty resolve
     // (or create via the FMP/Yahoo pipeline) that company and get a reciprocal mirror row — so the
     // relationship is saved bidirectionally, the same way the discover→link flow does it.
-    [HttpPost, Route("save-batch")]
+    [HttpPost, Route("save-batch"), ValidateAntiForgeryToken]
     public async Task<IActionResult> SaveBatch([FromBody] SaveBatchRequest req)
     {
         if (req is null || req.CompanyId <= 0) return BadRequest("CompanyId required.");
         var owner = _companies.GetById(req.CompanyId);
         if (owner is null) return NotFound();
-        var node = ParseNode(req.Node);
+        if (!TryParseNode(req.Node, out var node)) return BadRequest("Invalid extraction node.");
 
         // The filing every item in this batch was read from (upserted once by accession). The URL is
         // rebuilt here from the owner's CIK + the document the scan read, rather than trusted from the
@@ -294,181 +295,49 @@ public class ExtractionController : Controller
         });
     }
 
-    // ── Measurement harness ────────────────────────────────────────────────────────────────────
-    // Runs the COST lead agent N times over the same filing(s) and scores repeatability +
-    // evidence presence. Server-side and in-process on purpose: driving the normal chat path would mean
-    // N browser sessions parsing ```ledger``` blocks in JS and pasting results out by hand.
-    // Read-only — nothing here writes to the database.
-
-    // Opened blank, or deep-linked from a company's COST SOURCES "MEASURE AGENT" button with one
-    // filing already chosen — that arrives prefilled as a target line so the accession/doc never have
-    // to be copied by hand. More lines can still be added before running.
-    [HttpGet, Route("measure")]
-    public IActionResult Measure(long? companyId, string? accession, string? doc, string? form)
-    {
-        var vm = new MeasureViewModel();
-        if (companyId is { } id && !string.IsNullOrWhiteSpace(accession) && !string.IsNullOrWhiteSpace(doc))
-            vm.Targets = string.Join(", ", new[] { id.ToString(), accession, doc, form }
-                .Where(p => !string.IsNullOrWhiteSpace(p)));
-        return View(vm);
-    }
-
-    // Detached, like scan-auto-async: the batch runs for minutes, so holding a request open would
-    // give the page nothing to show and would die to any proxy timeout. Registers a MeasureJob, fires
-    // the work on a background task with its OWN DI scope (the request scope and its DbContext are
-    // gone the moment this returns), and hands back the id for the tracker to poll.
-    [HttpPost, Route("measure/start")]
-    [ValidateAntiForgeryToken]
-    public async Task<IActionResult> MeasureStart([FromBody] MeasureViewModel vm)
-    {
-        var keys = await _keys.GetAsync();
-        RequireParsingKey(keys);
-
-        var targets = new List<(long CompanyId, string Accession, string Doc, string? Form)>();
-        foreach (var line in (vm.Targets ?? "").Split('\n', StringSplitOptions.RemoveEmptyEntries))
-        {
-            // "companyId, accession, doc[, form]" — one filing per line.
-            var f = line.Split(',', StringSplitOptions.TrimEntries);
-            if (f.Length < 3 || !long.TryParse(f[0], out var companyId)) continue;
-            targets.Add((companyId, f[1], f[2], f.Length > 3 && f[3].Length > 0 ? f[3] : null));
-        }
-        if (targets.Count == 0) return BadRequest("No valid target lines.");
-
-        var runs = Math.Clamp(vm.Runs, 2, 20);
-        var job = new MeasureJob { Runs = runs, StrictCounterparties = vm.StrictCounterparties };
-        _measureJobs.Add(job);
-
-        _ = Task.Run(async () =>
-        {
-            using var scope = _scopeFactory.CreateScope();
-            var sp = scope.ServiceProvider;
-            sp.GetRequiredService<IUserApiKeyProvider>().Set(keys);
-            var measure = sp.GetRequiredService<CounterpartyMeasurementService>();
-            var companies = sp.GetRequiredService<ICompanyRepository>();
-
-            try
-            {
-                foreach (var t in targets)
-                {
-                    var label = companies.GetById(t.CompanyId)?.Name ?? $"#{t.CompanyId}";
-                    // One filing's failure must not void the whole batch — a batch that took twenty
-                    // minutes is not something to throw away because the fourth filing 404'd.
-                    try
-                    {
-                        var result = await measure.MeasureAsync(
-                            t.CompanyId, t.Accession, t.Doc, runs, t.Form, job.StrictCounterparties,
-                            p => job.Apply(p with { Filing = label }));
-                        lock (job.Lock) job.Results.Add(result);
-                    }
-                    catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or InvalidOperationException)
-                    {
-                        lock (job.Lock)
-                            job.Results.Add(new CounterpartyMeasurementResult(
-                                label, "", t.Accession, runs,
-                                0, 0, 0, 0, 0, 0, 0, 0, 0, "", DateTime.UtcNow, [], [], ex.Message));
-                    }
-                }
-
-                job.RowsJson = JsonSerializer.Serialize(
-                    job.Results.SelectMany(r => r.Rows),
-                    new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
-                job.Status = MeasureJobStatus.Done;
-            }
-            catch (Exception ex)
-            {
-                job.Error = ex.Message;
-                job.Status = MeasureJobStatus.Error;
-            }
-        });
-
-        return Json(new { jobId = job.Id });
-    }
-
-    // Polled by the tracker (~1s). Returns the live per-run tree: the fast agent's chunks with their
-    // titles and found-counts, then the strong agent's item count once its call lands.
-    [HttpGet, Route("measure/status/{jobId}")]
-    public IActionResult MeasureStatus(string jobId)
-    {
-        var job = _measureJobs.Get(jobId);
-        if (job is null) return NotFound();
-        lock (job.Lock)
-            return Json(new
-            {
-                status = job.Status.ToString(),
-                error = job.Error,
-                runs = job.RunStates
-                    .OrderBy(r => r.Filing).ThenBy(r => r.Run)
-                    .Select(r => new
-                    {
-                        r.Filing, r.Run, r.Phase, r.FastWorkerClaims, r.Errors, r.LeadAgentClaims,
-                        chunksTotal = r.Chunks.Count,
-                        chunksDone = r.Chunks.Count(c => c.Status is "Done" or "Error"),
-                        chunks = r.Chunks.Select(c => new
-                        {
-                            c.Titles, c.Status, c.Found,
-                            error = c.Status == "Error" ? c.Response : null,
-                        }),
-                    }),
-            });
-    }
-
-    // The finished batch, rendered by the same view the form lives on. A GET so the results page can
-    // be reloaded, linked and kept while the annotations are made.
-    [HttpGet, Route("measure/result/{jobId}")]
-    public IActionResult MeasureResult(string jobId)
-    {
-        var job = _measureJobs.Get(jobId);
-        if (job is null) return NotFound();
-        lock (job.Lock)
-            return View("Measure", new MeasureViewModel
-            {
-                Runs = job.Runs,
-                StrictCounterparties = job.StrictCounterparties,
-                Results = job.Results.ToList(),
-                RowsJson = job.RowsJson,
-            });
-    }
-
     // Mode B — AI reads one filing and proposes revenue rows + their proof for the human to
     // confirm. Persists nothing; the page fills the form and the existing save path freezes proof.
-    [HttpPost, Route("auto-extract/{companyId:long}")]
-    public async Task<IActionResult> AutoExtract(long companyId, [FromQuery] string accession, [FromQuery] string doc, [FromQuery] string? node, [FromQuery] string? form)
+    [HttpPost, Route("auto-extract/{companyId:long}"), ValidateAntiForgeryToken]
+    public async Task<IActionResult> AutoExtract(
+        long companyId, [FromQuery] string accession, [FromQuery] string doc, [FromQuery] string? node)
     {
         if (_companies.GetById(companyId) is null) return NotFound();
         if (string.IsNullOrWhiteSpace(accession) || string.IsNullOrWhiteSpace(doc))
             return BadRequest("accession and doc are required.");
         try
         {
+            if (!TryParseNode(node, out var parsedNode)) return BadRequest("Invalid extraction node.");
             var suggestions = await _fastWorkerScan.ScanFullSectionsAsync(
-                companyId, accession, doc, ParseNode(node), form);
+                companyId, accession, doc, parsedNode);
             return Json(suggestions);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
-            return StatusCode(StatusCodes.Status503ServiceUnavailable, "DeepSeek unreachable.");
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, "AI provider unreachable.");
         }
     }
 
     // Mode B (auto) — triage every bold heading by title, scan the AI-chosen ones in parallel, and
     // store the fast-worker digest for the lead agent. Replaces the hand-pick flow. Returns scanned + found.
-    [HttpPost, Route("scan-auto/{companyId:long}")]
+    [HttpPost, Route("scan-auto/{companyId:long}"), ValidateAntiForgeryToken]
     public async Task<IActionResult> ScanAuto(
-        long companyId, [FromQuery] string accession, [FromQuery] string doc, [FromQuery] string? node, [FromQuery] string? form)
+        long companyId, [FromQuery] string accession, [FromQuery] string doc, [FromQuery] string? node)
     {
         if (_companies.GetById(companyId) is null) return NotFound();
         if (string.IsNullOrWhiteSpace(accession) || string.IsNullOrWhiteSpace(doc))
             return BadRequest("accession and doc are required.");
         try
         {
+            if (!TryParseNode(node, out var parsedNode)) return BadRequest("Invalid extraction node.");
             var result = await _fastWorkerScan.RunFastWorkerScanAsync(
-                companyId, accession, doc, ParseNode(node), form);
+                companyId, accession, doc, parsedNode);
             // Project without Digest: it is for in-process callers (the measurement harness), and the
             // browser has no use for a multi-KB fast-worker digest on every scan.
             return Json(new { result.Scanned, result.Found, result.Headings });
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
-            return StatusCode(StatusCodes.Status503ServiceUnavailable, "DeepSeek/SEC unreachable.");
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, "AI provider or SEC unreachable.");
         }
     }
 
@@ -476,7 +345,7 @@ public class ExtractionController : Controller
     // background task, and return its id at once so the page doesn't block. The user can navigate
     // away; the notification widget polls scan-jobs for the result. The background task opens its
     // OWN DI scope — the request scope (and its DbContext) is gone the moment this returns.
-    [HttpPost, Route("scan-auto-async/{companyId:long}")]
+    [HttpPost, Route("scan-auto-async/{companyId:long}"), ValidateAntiForgeryToken]
     public async Task<IActionResult> RunFastWorkerScanAsync(
         long companyId, [FromQuery] string accession, [FromQuery] string doc,
         [FromQuery] string? node, [FromQuery] string? form,
@@ -491,7 +360,7 @@ public class ExtractionController : Controller
         var keys = await _keys.GetAsync();
         RequireParsingKey(keys);
 
-        var parsedNode = ParseNode(node);
+        if (!TryParseNode(node, out var parsedNode)) return BadRequest("Invalid extraction node.");
         var job = new ScanJob
         {
             CompanyId = companyId,
@@ -521,7 +390,7 @@ public class ExtractionController : Controller
                 // the live section tree instead (filled by the progress callback below).
                 job.Progress = $"Reading the {job.FilingLabel} & triaging sections with parallel agents…";
                 job.Report = await fastWorkerScan.RunFastWorkerScanAsync(
-                    companyId, accession, doc, parsedNode, form, p => ApplyScanProgress(job, p));
+                    companyId, accession, doc, parsedNode, p => ApplyScanProgress(job, p));
                 // Auto AI summary: one chat turn grounded on the digest the scan just cached, so the
                 // notification opens with a real answer rather than just counts.
                 job.Progress = $"Found {job.Report.Found} candidate(s) · writing summary…";
@@ -535,7 +404,7 @@ public class ExtractionController : Controller
                 job.Replying = true;
                 job.ReplyBuffer = "";
                 job.ReplyThink = "";
-                await foreach (var d in chat.StreamReplyAsync(companyId, accession, doc, parsedNode, seed, form))
+                await foreach (var d in chat.StreamReplyAsync(companyId, accession, doc, parsedNode, seed))
                 {
                     if (d.Kind == "text") job.ReplyBuffer += d.Text;
                     else if (d.Kind == "reasoning") job.ReplyThink += d.Text;
@@ -692,7 +561,7 @@ public class ExtractionController : Controller
     }
 
     // Drop a job the user dismissed from the widget. Try both stores — the id is from either.
-    [HttpPost, Route("scan-jobs/dismiss/{jobId}")]
+    [HttpPost, Route("scan-jobs/dismiss/{jobId}"), ValidateAntiForgeryToken]
     public IActionResult DismissScanJob(string jobId)
     {
         _jobs.Remove(jobId);
@@ -703,7 +572,7 @@ public class ExtractionController : Controller
     // Start a detached follow-up chat reply for a finished scan: generate on a background task so
     // the answer survives the user navigating away. The widget POSTs the conversation so far, then
     // polls scan-jobs/{id}/reply for the streamed result. Reuses the existing lead-agent context.
-    [HttpPost, Route("scan-jobs/{jobId}/reply")]
+    [HttpPost, Route("scan-jobs/{jobId}/reply"), ValidateAntiForgeryToken]
     public async Task<IActionResult> ScanJobReply(string jobId, [FromBody] ScanJobReplyRequest req)
     {
         var job = _jobs.Get(jobId);
@@ -730,7 +599,7 @@ public class ExtractionController : Controller
             var chat = scope.ServiceProvider.GetRequiredService<IExtractionChatService>();
             try
             {
-                await foreach (var d in chat.StreamReplyAsync(job.CompanyId, job.Accession, job.Doc, node, history, job.Form))
+                await foreach (var d in chat.StreamReplyAsync(job.CompanyId, job.Accession, job.Doc, node, history))
                 {
                     if (d.Kind == "text") job.ReplyBuffer += d.Text;
                     else if (d.Kind == "reasoning") job.ReplyThink += d.Text;
@@ -738,7 +607,7 @@ public class ExtractionController : Controller
             }
             catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
             {
-                job.ReplyError = "DeepSeek unreachable.";
+                job.ReplyError = "AI provider unreachable.";
             }
             catch (Exception ex)
             {
@@ -767,7 +636,7 @@ public class ExtractionController : Controller
     // request into focused sub-queries, each its own grounded search. Streams NDJSON lines as it goes
     // ({"t":"plan"|"searching"|"result"|"error", …}) so the page renders a live feed. Persists nothing;
     // the user confirms each found counterparty via LinkCounterparty.
-    [HttpPost, Route("discover-related")]
+    [HttpPost, Route("discover-related"), ValidateAntiForgeryToken]
     public async Task DiscoverRelated([FromBody] DiscoverCounterpartiesRequest req, CancellationToken ct)
     {
         if (req is null || req.CompanyId <= 0 || _companies.GetById(req.CompanyId) is null)
@@ -825,7 +694,7 @@ public class ExtractionController : Controller
     // source (CUSTOMER) or cost source (SUPPLIER) on the inspected company pointing at it — feeding the
     // graph's RELATED COMPANIES hub via RelatedCompanyId. Value is null (web gives no figure); the row
     // exists to carry the relationship.
-    [HttpPost, Route("link-counterparty")]
+    [HttpPost, Route("link-counterparty"), ValidateAntiForgeryToken]
     public async Task<IActionResult> LinkCounterparty([FromBody] LinkCounterpartyRequest req)
     {
         if (req is null || req.CompanyId <= 0) return BadRequest("CompanyId required.");
