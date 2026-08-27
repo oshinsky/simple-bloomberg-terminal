@@ -1,0 +1,21 @@
+prompt,counterparty,direction,fast_worker_runs,lead_agent_runs,fast_worker_frequency,lead_agent_frequency,status,note
+STRICT,"Ablecom Technology, Inc.",SUPPLIER,"1 2 3 4 5 6 7 8 9 10","1 2 3 4 5 6 7 8 9 10",10/10,10/10,Stable,
+STRICT,"BDO USA, P.C.",SUPPLIER,"1 2 3 4 5 6 7 8 9 10","1 2 3 4 5 6 7 8 9 10",10/10,10/10,Stable,
+STRICT,"Compuware Technology, Inc.",SUPPLIER,"1 2 3 4 5 6 7 8 9 10","1 2 3 4 5 6 7 8 9 10",10/10,10/10,Stable,
+STRICT,DELOITTE & TOUCHE LLP,SUPPLIER,"1 2 3 4 5 6 7 8 9 10","1 2 3 4 5 6 7 8 9 10",10/10,10/10,Stable,
+STRICT,Ablecom,SUPPLIER,"1 2 3 4 5 6 7 8 9 10","",10/10,0/10,Lead-agent variance,"Alias of Ablecom Technology, Inc.; fast workers found it in every run but the lead agent used the longer name."
+STRICT,Compuware,SUPPLIER,"1 2 3 4 5 6 7 8 9 10","",10/10,0/10,Lead-agent variance,"Alias of Compuware Technology, Inc.; fast workers found it in every run but the lead agent used the longer name."
+STRICT,Leadtek,SUPPLIER,"1 2 3 4 5 6 7 8 9 10","7 9",10/10,2/10,Lead-agent variance,"Fast workers found it in every run; lead agent retained this name in two runs."
+STRICT,Corporate Venture,"SUPPLIER / CUSTOMER","","6 8",0/10,2/10,Direction conflict,"Not a company; false-positive lead-agent extraction."
+STRICT,Green Earth Liang's Inc.,"SUPPLIER / PARTNER","1 3 4 5 6 7 8 9 10","1 3 4 5 6 7 8 9 10",9/10,9/10,Direction conflict,
+STRICT,Leadtek Research Inc.,SUPPLIER,"1 2 3 4 5 6 8 10","1 2 3 4 5 6 8 10",8/10,8/10,Unstable,"Alias of Leadtek."
+STRICT,AMD,"SUPPLIER / PARTNER","2 3 4 6 7 9","2 3 4 6 7 9",6/10,6/10,Direction conflict,
+STRICT,Intel,"SUPPLIER / PARTNER","2 3 4 6 7 9","2 3 4 6 7 9",6/10,6/10,Direction conflict,
+STRICT,NVIDIA,"SUPPLIER / PARTNER","2 3 4 6 7 9","2 3 4 6 7 9",6/10,6/10,Direction conflict,
+STRICT,"U.S. Bank Trust Company, National Association",SUPPLIER,"1 6 7 8 9 10","1 6 7 8 9 10",6/10,6/10,Unstable,
+STRICT,E.SUN Bank,SUPPLIER,"5 9","5 9",2/10,2/10,Unstable,
+STRICT,HSBC Bank,SUPPLIER,"5 9","5 9",2/10,2/10,Unstable,
+STRICT,Mega International Commercial Bank,SUPPLIER,"7 9","7 9",2/10,2/10,Unstable,
+STRICT,Green Earth,SUPPLIER,"2","2",1/10,1/10,Unstable,"Alias of Green Earth Liang's Inc."
+STRICT,Mega Bank,SUPPLIER,"5","5",1/10,1/10,Unstable,"Alias of Mega International Commercial Bank."
+STRICT,"Yuanta Commercial Bank Co., Ltd.",SUPPLIER,"7","7",1/10,1/10,Unstable,

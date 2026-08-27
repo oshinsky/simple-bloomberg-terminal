@@ -1,7 +1,7 @@
 # Counterparty extraction measurement
 
-This folder contains the measurement orchestration, versioned experimental treatment, and pure scoring
-layer for the filing counterparty pipeline.
+This folder contains the measurement orchestration, versioned experimental treatment, and raw result
+projection for the filing counterparty pipeline.
 
 ## Runtime flow
 
@@ -30,8 +30,8 @@ Measure.cshtml
    `LeadAgentRunner` executes the fixed measurement contract from `MeasurementPrompts.cs`. The lead
    returns an `items` ledger. Measurement does not pass through the conversational chat service.
 7. `CounterpartyMeasurementService.cs` creates one `CounterpartyRunResult` per repetition and passes all
-   runs to `MeasurementCalculator.cs`. The calculator performs evidence, repeatability, and retention
-   scoring; the controller returns the result to `Measure.cshtml`.
+   runs to `MeasurementCalculator.cs`. The calculator projects raw rows used by the disagreement,
+   run-frequency, and manual-review views.
 
 The fast worker agents do not message the lead agent directly. Their JSON is parsed and reduced into a
 fast-worker digest, which the host injects into the lead-agent call. This is a hierarchical map/reduce
@@ -58,8 +58,7 @@ CounterpartyMeasurementService.cs           [MEASUREMENT]
 
 The normal chat and measurement paths are sibling orchestrators. Both use the shared scan, filing-context,
 and lead-agent execution services. `ExtractionChatService` adds conversation and save blocks;
-`CounterpartyMeasurementService` instead adds repeated runs, a fixed ledger contract, artifact capture,
-and scoring.
+`CounterpartyMeasurementService` instead adds repeated runs, a fixed ledger contract, and raw-row output.
 
 ## File responsibilities
 
@@ -72,22 +71,20 @@ and scoring.
 | `Services/Extraction/FastWorkerScanService.cs` | Fetches inputs, plans chunks, runs fast worker agents, and builds their digest. |
 | `Services/Extraction/FilingSections.cs` | Parses and filters filing sections and plans deterministic chunks. |
 | `Services/Clients/Edgar/StockApiClient.cs` | Downloads filing documents from EDGAR. |
-| `Services/Extraction/FilingAnalysisContextService.cs` | Builds shared filing-digest and raw-text fallback context. |
+| `Services/Extraction/FilingAnalysisContextService.cs` | Builds the shared context exclusively from fast-worker findings. |
 | `Services/Extraction/LeadAgentRunner.cs` | Executes prompt-agnostic lead-agent calls. |
 | `Services/Extraction/Chat/ExtractionChatService.cs` | Adds interactive conversation and save-block prompts; measurement does not depend on it. |
 | `Services/Extraction/CounterpartyPrompts.cs` | Owns the directional COST/REVENUE fast-worker contract. |
 | `MeasurementPrompts.cs` | Owns the versioned measurement lead-agent contract. |
 | `CounterpartyModels.cs` | Defines run artifacts and measurement output records. |
-| `MeasurementSupport.cs` | Parses lead-agent ledger JSON, normalizes counterparty identities, and checks evidence against the worker corpus. |
-| `MeasurementCalculator.cs` | Calculates all metrics without network, UI, or model access. |
+| `MeasurementSupport.cs` | Parses the lead-agent ledger JSON. |
+| `MeasurementCalculator.cs` | Projects completed runs into raw comparison rows. |
 
 ## Measurement rules
 
-- Evidence is searched only in the exact `ExtractionChunkArtifact` corpus observed by workers.
-- Repeatability identity is `(direction, normalized counterparty)`.
-- Corporate suffixes and formatting do not create separate identities.
-- Fast-worker and lead-agent layers are scored separately.
-- Precision remains a manual annotation step because the filing corpus is not a complete gold label.
+- Fast-worker and lead-agent rows remain separate.
+- The UI groups common corporate-name variations for the disagreement view.
+- Precision remains a manual annotation step.
 
 Both `CounterpartyPrompts.Version` and `MeasurementPrompts.Version` are recorded with every experiment.
 Changing either prompt or output schema creates a new treatment and should increment its version.
@@ -98,7 +95,5 @@ The same company can be extracted under different names, such as `NVIDIA`, `NVID
 `NVIDIA Corporation`. Treating these as separate counterparties creates duplicate rows and makes the
 extraction appear less repeatable than it actually is.
 
-Before scoring, the measurement layer normalizes case, punctuation, whitespace, and common legal suffixes.
-The raw name is retained for auditing. Ambiguous aliases such as `AMD` and `Advanced Micro Devices`
-are not merged automatically because an incorrect match could artificially improve the result. A
-company's normalized identity and its relationship direction are measured separately.
+For display, the UI normalizes case, punctuation, whitespace, and common legal suffixes while retaining
+the raw name for auditing. Ambiguous aliases such as `AMD` and `Advanced Micro Devices` are not merged.

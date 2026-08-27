@@ -24,18 +24,7 @@ public sealed record CounterpartyClaim(
     string? Evidence,
     string? Section);
 
-/// <summary>What one complete fast-worker-and-lead-agent run produced.</summary>
-public sealed record ExtractionRunMetrics(
-    int Run,
-    int Chunks,
-    int FastWorkerClaims,
-    int LeadAgentClaims,
-    int Errors,
-    double FastWorkerEvidencePct = 0,
-    double LeadAgentEvidencePct = 0,
-    IReadOnlyList<string>? ErrorDetails = null);
-
-/// <summary>One exportable claim with run- and filing-level measurements denormalized onto it.</summary>
+/// <summary>One raw claim used by the comparison and manual-review views.</summary>
 public sealed record CounterpartyMeasurementRow(
     string Layer,
     string Company,
@@ -47,23 +36,7 @@ public sealed record CounterpartyMeasurementRow(
     string? Direction,
     string? What,
     string? Evidence,
-    string? Section,
-    bool EvidenceFound,
-    int RunsPresent,
-    int WhatVariants,
-    int SectionCandidates,
-    int RunChunks,
-    int RunFastWorkerClaims,
-    int RunLeadAgentClaims,
-    int RunErrors,
-    double FastWorkerEvidencePct,
-    double FastWorkerRepeatPct,
-    double LeadAgentEvidencePct,
-    double LeadAgentRepeatPct,
-    double RetentionPct,
-    int TotalErrors,
-    string Model,
-    DateTime RunAt);
+    string? Section);
 
 /// <summary>The paper-facing result for one filing across repeated complete pipeline runs.</summary>
 public sealed record CounterpartyMeasurementResult(
@@ -71,18 +44,9 @@ public sealed record CounterpartyMeasurementResult(
     string Cik,
     string Accession,
     int Runs,
-    double MeanChunks,
-    double MeanFastWorkerClaims,
-    double MeanLeadAgentClaims,
-    double FastWorkerEvidencePct,
-    double FastWorkerRepeatPct,
-    double LeadAgentEvidencePct,
-    double LeadAgentRepeatPct,
-    double RetentionPct,
     int TotalErrors,
     string Model,
     DateTime RunAt,
-    IReadOnlyList<ExtractionRunMetrics> RunDetail,
     IReadOnlyList<CounterpartyMeasurementRow> Rows,
     string? Error = null);
 
@@ -94,4 +58,3 @@ public sealed record CounterpartyRunResult(
     IReadOnlyList<CounterpartyClaim> FastWorkerClaims,
     IReadOnlyList<CounterpartyClaim> LeadAgentClaims,
     IReadOnlyList<string> Errors);
-

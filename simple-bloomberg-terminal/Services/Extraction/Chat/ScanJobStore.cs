@@ -33,6 +33,7 @@ public class ScanJob
     public string Accession { get; init; } = "";
     public string Doc { get; init; } = "";
     public string Node { get; init; } = "REVENUE";
+    public bool StrictCounterparties { get; init; }
     public string? Form { get; init; }
     public string FilingLabel { get; init; } = "";   // e.g. "10-K 2024-01-31" for the widget header
 

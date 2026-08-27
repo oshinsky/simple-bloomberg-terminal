@@ -48,9 +48,8 @@ Three things make concurrency safe:
 
 1. **Per-run DI scope.** `ICompanyRepository` is scoped and both services use it, so a shared scope
    meant concurrent operations on one `DbContext`. Each run resolves its own services.
-2. **Explicit lead-agent context.** Each run's lead-agent call is handed *its own* fast-worker digest rather than
-   resolving one, because the `filing-findings` cache key is per-filing — a resolving run would be
-   graded against whichever concurrent scan finished last.
+2. **Explicit lead-agent context.** Each run's lead-agent call is handed *its own* fresh fast-worker
+   digest directly. LLM findings are never written to or resolved from the shared cache.
 3. **Shared deterministic caches.** The raw filing and parsed headings are pure fetch/parse results,
    reused across runs on purpose: sharing them removes no model variance.
 

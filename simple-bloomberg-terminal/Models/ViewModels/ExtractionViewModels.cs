@@ -67,16 +67,14 @@ public record ReferenceResult(long SourceId);
 /// the existing save path can freeze it — no new write path. Nothing is persisted until the human saves.
 /// </summary>
 public record ExtractionSuggestion(
-    string Name, string? Classification, double? Value, double? Percentage,
-    string? RelatedCompany, string Section, string? Evidence, string? Note = null);
+    string Name, string? Classification, string? RelatedCompany,
+    string Section, string? Evidence, string? Note = null);
 
 /// <summary>Outcome of an auto-scan: how many headings the triage model chose to read in full, how
 /// many candidate rows the workers pulled from them, and every heading it was offered with whether it
 /// was picked — so the page can show the user what was triaged and what the AI selected.</summary>
-/// <param name="FastWorkerDigest">The fast-worker digest this scan produced, returned as well as cached. The
-/// measurement harness needs it in hand: it runs N scans of one filing concurrently, and they all
-/// share the one <c>filing-findings</c> cache key, so reading the digest back from the cache would
-/// hand a run whichever scan finished last.</param>
+/// <param name="FastWorkerDigest">The fresh fast-worker digest produced by this scan and passed directly
+/// to its lead-agent consumer. LLM findings are not cached.</param>
 public record FastWorkerScanResult(
     int Scanned, int Found, IReadOnlyList<ScannedHeading> Headings, string FastWorkerDigest = "",
     IReadOnlyList<ExtractionChunkArtifact>? Corpus = null,
@@ -135,18 +133,12 @@ public class SaveBatchItem
 {
     public string Name { get; set; } = string.Empty;
     public string? Classification { get; set; } // RISK scope only
-    public double? Value { get; set; }
-    public double? Percentage { get; set; }
     public string? Note { get; set; }
     public string? RelatedCompany { get; set; }
     public string? RelatedCompanyTicker { get; set; }   // enables the FMP/Yahoo create path
     public string? Reference { get; set; }               // where in the document → {Cost|Revenue}Source/CompanyRisk.Reference
 
-    // One verbatim quote backing the whole record → {Cost|Revenue}Source/CompanyRisk.Evidence. It was
-    // a per-field object (proof.name, proof.value, proof.classification…) until the model's own output
-    // showed the split was fiction: proof.name and proof.value came back as the SAME sentence whenever
-    // a source had a figure, and proof.classification was always a torn-off fragment — a classification
-    // is an inference, so there is nothing in the filing to quote for it.
+    // One verbatim quote backing the whole record → {Cost|Revenue}Source/CompanyRisk.Evidence.
     public string? Evidence { get; set; }
 }
 

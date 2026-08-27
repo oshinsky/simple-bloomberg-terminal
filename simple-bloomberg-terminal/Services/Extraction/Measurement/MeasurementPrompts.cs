@@ -6,7 +6,7 @@ namespace simple_bloomberg_terminal.Services.Extraction.Measurement;
 /// </summary>
 public static class MeasurementPrompts
 {
-    public const string Version = "counterparty-ledger-v1";
+    public const string Version = "counterparty-ledger-v2";
 
     public const string LeadAgentUserPrompt = "Emit the full counterparty ledger for this filing.";
 
@@ -29,5 +29,7 @@ public static class MeasurementPrompts
         "do not paraphrase, do not shorten mid-word). counterparty is the company name. direction is " +
         "exactly one of SUPPLIER, CUSTOMER, PARTNER. what is a SHORT description of what is bought or " +
         "sold. section is the SEC Item the finding came from. Never include a company that is not in " +
-        "the findings above. No prose before or after the block.";
+        "the findings above. Return exactly one item per counterparty. If the same counterparty appears " +
+        "more than once or under minor variations of the same name, merge those findings into one item " +
+        "and keep the clearest verbatim evidence. No prose before or after the block.";
 }

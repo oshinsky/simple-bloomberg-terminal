@@ -5,6 +5,14 @@ namespace simple_bloomberg_terminal.Tests;
 public class CounterpartyMeasurementTests
 {
     [Fact]
+    public void LeadAgentPrompt_ExplicitlyRequiresDuplicateCounterpartiesToBeMerged()
+    {
+        Assert.Contains("exactly one item per counterparty", MeasurementPrompts.LeadAgentSystemPrompt);
+        Assert.Contains("minor variations of the same name", MeasurementPrompts.LeadAgentSystemPrompt);
+        Assert.Contains("merge those findings", MeasurementPrompts.LeadAgentSystemPrompt);
+    }
+
+    [Fact]
     public void LeadAgentCodec_SalvagesCompleteItemsFromATruncatedReply()
     {
         const string truncated = """
@@ -18,29 +26,7 @@ public class CounterpartyMeasurementTests
     }
 
     [Fact]
-    public void EvidenceIndex_SearchesTheExactFastWorkerCorpusWithNormalizedPunctuation()
-    {
-        var chunks = new[]
-        {
-            new ExtractionChunkArtifact(0, "Item 1", ["Suppliers"],
-                "We purchase substantially all chips from Acme Foundry, Ltd.")
-        };
-        var index = new EvidenceIndex(chunks);
-
-        Assert.True(index.Contains("we purchase substantially all chips from ACME FOUNDRY LTD"));
-        Assert.False(index.Contains("Acme supplies all of our cloud capacity"));
-    }
-
-    [Theory]
-    [InlineData("Acme Foundry Ltd.", "acme foundry")]
-    [InlineData("ACME Foundry, L.L.C.", "acme foundry")]
-    public void IdentityNormalization_RemovesFormattingAndCorporateSuffixes(string input, string expected)
-    {
-        Assert.Equal(expected, CounterpartyIdentity.Normalize(input));
-    }
-
-    [Fact]
-    public void Calculator_MeasuresRepeatabilityEvidenceAndRetentionAcrossRuns()
+    public void Calculator_ProjectsRawClaimsAcrossRuns()
     {
         var target = new FilingTarget(1, "Example", "1", "0001", "example.htm", "10-K");
         var corpus = new[]
@@ -57,9 +43,9 @@ public class CounterpartyMeasurementTests
 
         var result = MeasurementCalculator.Calculate(runs, "test/model", DateTime.UnixEpoch);
 
-        Assert.Equal(100, result.FastWorkerEvidencePct);
-        Assert.Equal(100, result.FastWorkerRepeatPct);
-        Assert.Equal(50, result.RetentionPct);
-        Assert.Equal(2, result.RunDetail.Count);
+        Assert.Equal(2, result.Runs);
+        Assert.Equal(3, result.Rows.Count);
+        Assert.Equal(2, result.Rows.Count(row => row.Layer == "FAST_WORKER"));
+        Assert.Single(result.Rows, row => row.Layer == "LEAD_AGENT");
     }
 }

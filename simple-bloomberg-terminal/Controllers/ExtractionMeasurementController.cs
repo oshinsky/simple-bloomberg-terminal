@@ -62,7 +62,7 @@ public sealed class ExtractionMeasurementController(
                         lock (job.Lock)
                             job.Results.Add(new CounterpartyMeasurementResult(
                                 label, "", target.Accession, runs,
-                                0, 0, 0, 0, 0, 0, 0, 0, 0, "", DateTime.UtcNow, [], [], ex.Message));
+                                0, "", DateTime.UtcNow, [], ex.Message));
                     }
                 }
 

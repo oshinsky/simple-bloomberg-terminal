@@ -1090,8 +1090,6 @@ document.addEventListener('submit', async e => {
         return {
             name: j.name || '',
             classification: j.classification || '',
-            value: j.value != null && j.value !== '' ? Number(j.value) : null,
-            percentage: j.percentage != null && j.percentage !== '' ? Number(j.percentage) : null,
             note: j.note ?? null,
             relatedCompany: j.related_company || j.relatedCompany || null,
             relatedCompanyTicker: j.related_company_ticker || j.relatedCompanyTicker || null,
@@ -1128,10 +1126,7 @@ document.addEventListener('submit', async e => {
         if (savesGrip) savesGrip.hidden = false;
         savesEl.style.height = (read(SAVES_H_KEY, 200)) + 'px';   // restore the dragged height
         const rows = items.map((s, i) => {
-            const bits = [];
             const role = job.node === 'COST' ? 'SUPPLIER' : job.node === 'REVENUE' ? 'CUSTOMER' : s.classification;
-            if (s.value != null) bits.push('$' + Number(s.value).toLocaleString());
-            if (s.percentage != null) bits.push(s.percentage + '%');
             const cp = s.relatedCompany
                 ? `<span class="scan-notify-save-cp">↔ ${escapeHtml(s.relatedCompany)}${s.relatedCompanyTicker ? ' (' + escapeHtml(s.relatedCompanyTicker) + ')' : ''}</span>` : '';
             // The agent's verbatim quote for this row: click it to jump the filing pane (left) to the
@@ -1143,7 +1138,7 @@ document.addEventListener('submit', async e => {
                 <input type="checkbox" data-save="${i}" ${saveSel.has(s.key) ? 'checked' : ''}>
                 <span class="scan-notify-save-main" data-edit="${i}" title="Click to edit">
                     <span class="scan-notify-save-name">${escapeHtml(s.name)}</span>
-                    <span class="scan-notify-save-meta">${escapeHtml(role || '—')}${bits.length ? ' · ' + escapeHtml(bits.join(' · ')) : ''} ${cp}</span>
+                    <span class="scan-notify-save-meta">${escapeHtml(role || '—')} ${cp}</span>
                 </span>${quote}</div>`;
         }).join('');
         const savesHtml =
@@ -1400,9 +1395,7 @@ document.addEventListener('submit', async e => {
             html += field('Scope', `<select id="se_class"><option value=""></option>${opts}</select>`)
                 + field('Note', `<textarea id="se_note">${escapeHtml(s.note || '')}</textarea>`);
         } else {
-            html += field('Value (USD)', `<input id="se_value" type="number" step="any" value="${s.value != null ? s.value : ''}">`)
-                + field('Percentage', `<input id="se_pct" type="number" step="any" value="${s.percentage != null ? s.percentage : ''}">`)
-                + field('Related company', `<input id="se_rel" value="${escapeHtml(s.relatedCompany || '')}">`)
+            html += field('Related company', `<input id="se_rel" value="${escapeHtml(s.relatedCompany || '')}">`)
                 + field('Related ticker', `<input id="se_tick" value="${escapeHtml(s.relatedCompanyTicker || '')}">`);
         }
         editBody.innerHTML = html;
@@ -1412,7 +1405,6 @@ document.addEventListener('submit', async e => {
     function closeEdit() { editModal.hidden = true; editingKey = null; }
     function applyEdit() {
         if (editingKey == null) return;
-        const numOrNull = v => v === '' || v == null ? null : Number(v);
         const job = jobById(openJobId);
         const node = (job?.node || 'REVENUE').toUpperCase();
         const edit = { name: $('se_name').value.trim() };
@@ -1420,8 +1412,6 @@ document.addEventListener('submit', async e => {
             edit.classification = $('se_class').value || null;
             edit.note = $('se_note').value.trim() || null;
         } else {
-            edit.value = numOrNull($('se_value').value);
-            edit.percentage = numOrNull($('se_pct').value);
             edit.relatedCompany = $('se_rel').value.trim() || null;
             edit.relatedCompanyTicker = $('se_tick').value.trim() || null;
         }

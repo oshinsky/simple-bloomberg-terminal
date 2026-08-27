@@ -118,6 +118,13 @@
                 <span class="ext-modal-title">EDGAR Filings</span>
                 <span id="filingsCount" class="ext-modal-count"></span>
             </div>
+            <div id="counterpartyModeRow" hidden>
+                <label class="ext-field-label" for="strictCounterparties">COST extraction mode</label>
+                <select id="strictCounterparties" class="ext-select">
+                    <option value="false">Less strict</option>
+                    <option value="true">Strict</option>
+                </select>
+            </div>
             <input id="filingsFilter" class="form-control ext-modal-filter" placeholder="Filter form / date / description..."/>
             <button type="button" class="ext-btn ext-btn-ghost" data-close>✕ CLOSE</button>
         </div>
@@ -364,6 +371,7 @@
     // Reflect the current node in the page chrome: title, label, which cells show, load-button text.
     function applyNode() {
         $('nodeTitle').textContent = NODE_LABEL[node] || node;
+        $('counterpartyModeRow').hidden = node !== 'COST';
         $('classRow').hidden = !isRisk();
         rebuildClassOptions();
         $('valueRow').hidden = isRisk();
@@ -675,8 +683,10 @@
         btn.disabled = true; btn.textContent = 'Scanning…';
         const companyName = companyHidden()?.closest('.autocomplete')?.querySelector('.autocomplete-input')?.value || '';
         const filingLabel = `${currentFiling.form || 'filing'} ${currentFiling.filingDate || ''}`.trim();
+        const strictCounterparties = node === 'COST' && $('strictCounterparties').value === 'true';
         const qs = `accession=${encodeURIComponent(currentFiling.accessionNumber)}&doc=${encodeURIComponent(currentFiling.primaryDocument)}&node=${node}&form=${encodeURIComponent(currentFiling.form || '')}` +
-            `&companyName=${encodeURIComponent(companyName)}&filingLabel=${encodeURIComponent(filingLabel)}`;
+            `&companyName=${encodeURIComponent(companyName)}&filingLabel=${encodeURIComponent(filingLabel)}` +
+            `&strictCounterparties=${strictCounterparties}`;
         try {
             const res = await fetch(`/extraction/scan-auto-async/${id}?${qs}`, {
                 method: 'POST',

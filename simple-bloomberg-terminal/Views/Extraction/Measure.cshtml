@@ -206,82 +206,6 @@
             }
             else
             {
-                <div style="overflow-x:auto">
-                    <table class="terminal-table" style="table-layout:fixed;min-width:58rem;">
-                        <colgroup>
-                            <col style="width:8%"><col style="width:12%"><col style="width:16%">
-                            <col style="width:16%"><col style="width:16%"><col style="width:16%">
-                            <col style="width:16%">
-                        </colgroup>
-                        <thead>
-                        <tr>
-                            <th>Run</th><th>Chunks</th><th>Fast-worker claims</th><th>Fast-worker evidence %</th>
-                            <th>Lead-agent claims</th><th>Lead-agent evidence %</th><th>Errors</th>
-                        </tr>
-                        </thead>
-                        <tbody>
-                        @foreach (var d in r.RunDetail)
-                        {
-                            <tr>
-                                <td class="code-cell">@d.Run</td>
-                                <td class="num-cell">@d.Chunks</td>
-                                <td class="num-cell">@d.FastWorkerClaims</td>
-                                <td class="num-cell">@d.FastWorkerEvidencePct</td>
-                                <td class="num-cell">@d.LeadAgentClaims</td>
-                                <td class="num-cell">@d.LeadAgentEvidencePct</td>
-                                <td class="num-cell">
-                                    @if (d.Errors > 0)
-                                    {
-                                        <span class="impact-badge impact-high">@d.Errors</span>
-                                    }
-                                    else
-                                    {
-                                        <span class="muted-cell">0</span>
-                                    }
-                                </td>
-                            </tr>
-                            @if (d.ErrorDetails is { Count: > 0 })
-                            {
-                                <tr>
-                                    <td colspan="7">
-                                        @foreach (var error in d.ErrorDetails)
-                                        {
-                                            <div class="impact-badge impact-high" style="white-space:pre-wrap;margin:.15rem 0;">@error</div>
-                                        }
-                                    </td>
-                                </tr>
-                            }
-                        }
-                        <tr class="row-live">
-                            <td class="code-cell"><strong>mean</strong></td>
-                            <td class="num-cell">@r.MeanChunks</td>
-                            <td class="num-cell">@r.MeanFastWorkerClaims</td>
-                            <td class="num-cell">@r.FastWorkerEvidencePct</td>
-                            <td class="num-cell">@r.MeanLeadAgentClaims</td>
-                            <td class="num-cell">@r.LeadAgentEvidencePct</td>
-                            <td class="num-cell">@r.TotalErrors</td>
-                        </tr>
-                        </tbody>
-                    </table>
-                </div>
-
-                @* Repeatability and retention exist only ACROSS runs, so they have no per-run cell —
-                   they belong beneath the table rather than in it. *@
-                <div class="detail-metric-row" style="display:grid;grid-template-columns:repeat(3,minmax(12rem,1fr));gap:1rem;margin-top:.75rem;">
-                    <div>
-                        <div class="ext-field-label">Repeatability</div>
-                        <div class="num-cell">fast worker @r.FastWorkerRepeatPct% · lead agent @r.LeadAgentRepeatPct%</div>
-                    </div>
-                    <div>
-                        <div class="ext-field-label">Evidence found</div>
-                        <div class="num-cell">fast worker @r.FastWorkerEvidencePct% · lead agent @r.LeadAgentEvidencePct%</div>
-                    </div>
-                    <div>
-                        <div class="ext-field-label">Retention</div>
-                        <div class="num-cell">@r.RetentionPct%</div>
-                    </div>
-                </div>
-
                 <div class="presence-matrix" data-accession="@r.Accession" style="margin-top:1rem;"></div>
 
                 @if (r.TotalErrors > 0)
@@ -289,7 +213,7 @@
                     <div class="alert alert-warning" style="margin-top:.75rem;">
                         Some worker calls failed. A failed worker returns no candidates, which is
                         indistinguishable from a chunk that honestly contained none — so the fast layer's
-                        items and the retention figure are understated. Re-run before reporting these.
+                        items may be incomplete. Re-run before reporting these.
                     </div>
                 }
             }
@@ -320,7 +244,7 @@
                 <thead>
                 <tr>
                     <th>Counterparty</th><th>Direction</th><th>What</th>
-                    <th>Section</th><th>Evidence found</th><th>Evidence</th><th>Judgement</th>
+                    <th>Section</th><th>Evidence</th><th>Judgement</th>
                 </tr>
                 </thead>
                 <tbody></tbody>
@@ -410,10 +334,7 @@
                         : group.fastWorkerRuns.size === 0 ? 'Lead-agent only'
                         : group.leadAgentRuns.size === 0 ? 'Fast-worker only'
                         : 'Unstable';
-                    const evidenceRows = [...group.fastWorkerRows, ...group.leadAgentRows];
-                    const evidencePct = evidenceRows.length
-                        ? 100 * evidenceRows.filter(row => row.evidenceFound).length / evidenceRows.length : 0;
-                    return { ...group, names, primary: names[0], directionConflict, stable, status, evidencePct };
+                    return { ...group, names, primary: names[0], directionConflict, stable, status };
                 }).sort((a, b) => {
                     if (a.stable !== b.stable) return a.stable ? 1 : -1;
                     const deltaA = Math.abs(a.fastWorkerRuns.size - a.leadAgentRuns.size);
@@ -437,14 +358,13 @@
                 </div>`;
 
                 const comparisonTable = subset => `<div style="overflow-x:auto"><table class="terminal-table measure-comparison" style="width:100%;">
-                    <thead><tr><th>Counterparty</th><th>Direction</th><th>Fast workers</th><th>Lead agent</th><th>Evidence</th><th>Status</th></tr></thead>
+                    <thead><tr><th>Counterparty</th><th>Direction</th><th>Fast workers</th><th>Lead agent</th><th>Status</th></tr></thead>
                     <tbody>${subset.length ? subset.map(item => `<tr>
                         <td class="name-cell"><details class="measure-counterparty-detail"><summary>${esc(item.primary)} <span class="muted-cell">▾</span></summary>${detail(item)}</details></td>
                         <td class="tag-cell">${esc([...item.directions].join(' / ') || '—')}</td>
                         <td>${dots(item.fastWorkerRuns)}</td><td>${dots(item.leadAgentRuns)}</td>
-                        <td class="num-cell">${item.evidencePct.toFixed(1)}%</td>
                         <td><span class="measure-status ${statusClass(item)}">${esc(item.status)}</span></td>
-                    </tr>`).join('') : '<tr><td colspan="6" class="muted-cell">No counterparties in this group.</td></tr>'}</tbody>
+                    </tr>`).join('') : '<tr><td colspan="5" class="muted-cell">No counterparties in this group.</td></tr>'}</tbody>
                 </table></div>`;
 
                 const rawLayer = (layer, title) => {
@@ -466,16 +386,12 @@
                 const conflicts = items.filter(item => item.directionConflict).length;
                 const leadAgentDrops = items.filter(
                     item => item.fastWorkerRuns.size > item.leadAgentRuns.size).length;
-                const evidenceRows = filingRows.filter(row => row.evidence != null);
-                const evidencePct = evidenceRows.length ? 100 * evidenceRows.filter(row => row.evidenceFound).length / evidenceRows.length : 0;
-
                 host.innerHTML = `<div class="measure-summary">
                     <div class="measure-summary-card"><span class="measure-summary-value">${items.length}</span><span class="muted-cell">counterparties</span></div>
                     <div class="measure-summary-card"><span class="measure-summary-value">${stable.length}</span><span class="muted-cell">stable</span></div>
                     <div class="measure-summary-card"><span class="measure-summary-value">${disagreements.length}</span><span class="muted-cell">need attention</span></div>
                     <div class="measure-summary-card"><span class="measure-summary-value">${conflicts}</span><span class="muted-cell">direction conflicts</span></div>
                     <div class="measure-summary-card"><span class="measure-summary-value">${leadAgentDrops}</span><span class="muted-cell">lead-agent variances</span></div>
-                    <div class="measure-summary-card"><span class="measure-summary-value">${evidencePct.toFixed(1)}%</span><span class="muted-cell">evidence found</span></div>
                 </div>
                 <div class="measure-tabs">
                     <button type="button" class="measure-tab is-active" data-tab="issues">Disagreements (${disagreements.length})</button>
@@ -542,8 +458,6 @@
                     `<td class="tag-cell">${esc(r.direction || '—')}</td>` +
                     `<td class="muted-cell">${esc(r.what || '—')}</td>` +
                     `<td class="tag-cell">${esc(r.section || '—')}</td>` +
-                    `<td class="num-cell"><span class="impact-badge ${r.evidenceFound ? 'impact-low' : 'impact-high'}">` +
-                        `${r.evidenceFound ? 'YES' : 'NO'}</span></td>` +
                     `<td class="muted-cell" style="max-width:26rem;">` +
                         `<div class="evidence-link" role="button" tabindex="0">evidence ▾</div>` +
                         `<div class="ev-full" hidden style="margin-top:.35rem;white-space:pre-wrap;">` +
@@ -587,11 +501,7 @@
         // The single CSV writer. It lives here rather than server-side because `judgement` is filled
         // in this table — generating it in C# would mean a second writer producing a stale column.
         const COLS = ['extractionMode', 'layer', 'company', 'cik', 'accession', 'doc', 'run', 'counterparty', 'direction',
-            'what', 'evidence', 'section', 'evidenceFound', 'runsPresent',
-            'whatVariants', 'sectionCandidates', 'runChunks', 'runFastWorkerClaims',
-            'runLeadAgentClaims', 'runErrors', 'fastWorkerEvidencePct', 'fastWorkerRepeatPct',
-            'leadAgentEvidencePct', 'leadAgentRepeatPct', 'retentionPct', 'totalErrors',
-            'judgement', 'model', 'runAt'];
+            'what', 'evidence', 'section', 'judgement'];
         // Quote text, leave numbers/booleans bare so Excel reads them as numbers and COUNTIF works.
         const cell = v => v == null ? ''
             : (typeof v === 'number' || typeof v === 'boolean') ? String(v).toUpperCase()

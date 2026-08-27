@@ -82,9 +82,9 @@ Injects `ScanJobStore _jobs` and `IServiceScopeFactory _scopeFactory`. All route
 | `POST /extraction/save-batch` | `SaveBatch` | Saves many ticked objects at once (see below). |
 
 Reused (no new persistence logic):
-- `IFastWorkerScanService.RunFastWorkerScanAsync` — runs the parallel scan and **caches the fast-worker digest**
-  in `IMemoryCache` (key `filing-findings:{node}:{accession}:{doc}`).
-- `IFilingAnalysisContextService` — grounds consumers on the cached digest or filing-text fallback.
+- `IFastWorkerScanService.RunFastWorkerScanAsync` — runs a fresh parallel scan. Only the raw filing and
+  parsed headings are cached; LLM findings are not cached.
+- `IFilingAnalysisContextService` — grounds each consumer on the fresh findings from its own scan.
 - `ILeadAgentRunner` — executes a prompt against that context without imposing chat semantics.
 - `IExtractionChatService.StreamReplyAsync` — adds the conversational prompt, history, save blocks, and
   save blocks; used for the auto-summary and chat replies, but not by the measurement harness.
@@ -188,7 +188,7 @@ Key functions:
 
 1. Extraction page → `POST /scan-auto-async` → `{jobId}` → `window.startScanJob` adds id to
    `localStorage`, opens the panel, starts polling.
-2. Background task runs `RunFastWorkerScanAsync` (caches the fast-worker digest) then one `StreamReplyAsync` turn streamed into
+2. Background task runs `RunFastWorkerScanAsync`, passes its fresh digest directly to one `StreamReplyAsync` turn, and streams it into
    `ReplyBuffer`/`ReplyThink` with `Replying=true` (so the widget renders the first answer generating
    live); on finish it copies the text to `Summary`, clears `Replying`, sets `Status=Done`.
 3. List poll sees `Running→Done` → surfaces the panel (notification).

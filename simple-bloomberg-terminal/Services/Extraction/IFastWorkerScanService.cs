@@ -6,14 +6,12 @@ namespace simple_bloomberg_terminal.Services.Extraction;
 // Plans filing chunks, runs fast worker agents, and creates their digest.
 public interface IFastWorkerScanService
 {
-    string? GetCachedDigest(string accession, string doc, ExtractionNode node);
-
     Task<IReadOnlyList<ExtractionSuggestion>> ScanFullSectionsAsync(
         long companyId, string accession, string doc, ExtractionNode node,
         CancellationToken ct = default);
 
-    // Returns a cached fast-worker digest, running the scan when it is missing.
-    Task<string> GetOrCreateFastWorkerDigestAsync(
+    // Runs the workers and creates a fresh digest for this extraction.
+    Task<string> CreateFastWorkerDigestAsync(
         long companyId, string accession, string doc, ExtractionNode node,
         CancellationToken ct = default);
 

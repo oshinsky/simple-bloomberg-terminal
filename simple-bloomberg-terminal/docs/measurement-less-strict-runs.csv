@@ -1,0 +1,23 @@
+prompt,counterparty,direction,fast_worker_runs,lead_agent_runs,fast_worker_frequency,lead_agent_frequency,status,note
+LESS_STRICT,"Ablecom Technology, Inc.",SUPPLIER,"1 2 3 4 5 6 7 8 9 10","1 2 3 4 5 6 7 8 9 10",10/10,10/10,Stable,
+LESS_STRICT,"BDO USA, P.C.",SUPPLIER,"1 2 3 4 5 6 7 8 9 10","1 2 3 4 5 6 7 8 9 10",10/10,10/10,Stable,
+LESS_STRICT,"Compuware Technology, Inc.",SUPPLIER,"1 2 3 4 5 6 7 8 9 10","1 2 3 4 5 6 7 8 9 10",10/10,10/10,Stable,
+LESS_STRICT,DELOITTE & TOUCHE LLP,SUPPLIER,"1 2 3 4 5 6 7 8 9 10","1 2 3 4 5 6 7 8 9 10",10/10,10/10,Stable,
+LESS_STRICT,NVIDIA Corporation,SUPPLIER,"1 2 3 4 5 6 7 8 9 10","1 2 3 4 5 6 7 8 9 10",10/10,10/10,Stable,
+LESS_STRICT,Leadtek,SUPPLIER,"1 2 3 4 5 6 7 8 9 10","1 3 7 10",10/10,4/10,Lead-agent variance,"Fast workers found it in every run; lead agent retained it in four runs."
+LESS_STRICT,AMD,SUPPLIER,"1 2 3 4 5 7 8 9 10","1 2 5 7 8 9 10",9/10,7/10,Lead-agent variance,"Fast workers found it in nine runs; lead agent retained it in seven runs."
+LESS_STRICT,Corporate Venture,SUPPLIER,"","5 9",0/10,2/10,Lead-agent only,"Not a company; false-positive lead-agent extraction."
+LESS_STRICT,Green Earth Liang's Inc.,"SUPPLIER / PARTNER","1 2 3 4 5 6 7 8 9 10","1 2 3 4 5 6 7 8 9 10",10/10,10/10,Direction conflict,"Present in every run, but observed with conflicting directions."
+LESS_STRICT,Intel Corporation,SUPPLIER,"1 2 3 4 5 7 8 9 10","1 2 3 4 5 7 8 9 10",9/10,9/10,Unstable,
+LESS_STRICT,"U.S. Bank Trust Company, National Association",SUPPLIER,"1 2 3 4 5 6 7 9 10","1 2 3 4 5 6 7 9 10",9/10,9/10,Unstable,
+LESS_STRICT,Leadtek Research Inc.,SUPPLIER,"2 4 5 6 8 9","2 4 5 6 8 9",6/10,6/10,Unstable,"Possible alias of Leadtek; retained separately in the measurement UI."
+LESS_STRICT,Mega International Commercial Bank,SUPPLIER,"2 3 4 9 10","2 3 4 9 10",5/10,5/10,Unstable,
+LESS_STRICT,"Yuanta Commercial Bank Co., Ltd.",SUPPLIER,"2 3 4 9 10","2 3 4 9 10",5/10,5/10,Unstable,
+LESS_STRICT,E.SUN Bank,SUPPLIER,"1 4 7 8","1 4 7 8",4/10,4/10,Unstable,
+LESS_STRICT,HSBC Bank,SUPPLIER,"1 4 7 8","1 4 7 8",4/10,4/10,Unstable,
+LESS_STRICT,"CTBC Bank Co., Ltd.",SUPPLIER,"1 4 6","1 4 6",3/10,3/10,Unstable,
+LESS_STRICT,Mega Bank,SUPPLIER,"1 7 8","1 7 8",3/10,3/10,Unstable,"Possible alias of Mega International Commercial Bank; retained separately in the measurement UI."
+LESS_STRICT,"Advanced Micro Devices, Inc.",SUPPLIER,"3 4","3 4",2/10,2/10,Unstable,"Possible alias of AMD; retained separately in the measurement UI."
+LESS_STRICT,Broadcom Inc.,SUPPLIER,"3 4","3 4",2/10,2/10,Unstable,
+LESS_STRICT,"Micron Technology, Inc.",SUPPLIER,"3 4","3 4",2/10,2/10,Unstable,
+LESS_STRICT,Samsung Electronics Company Limited,SUPPLIER,"3 4","3 4",2/10,2/10,Unstable,

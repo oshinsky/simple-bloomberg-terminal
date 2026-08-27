@@ -39,12 +39,6 @@ public class FastWorkerScanService : IFastWorkerScanService
         _cache = cache;
     }
 
-    // FilingAnalysisContextService reads this node-specific digest for any lead-agent consumer.
-    private static string FastWorkerDigestKey(string accession, string doc, ExtractionNode node) =>
-        $"filing-findings:{node}:{accession}:{doc}";
-
-    public string? GetCachedDigest(string accession, string doc, ExtractionNode node) =>
-        _cache.TryGetValue(FastWorkerDigestKey(accession, doc, node), out string? digest) ? digest : null;
     private static string HeadingsKey(string accession, string doc, ExtractionNode node) =>
         $"filing-headings:{node}:{accession}:{doc}";
     private static readonly TimeSpan CacheFor = TimeSpan.FromMinutes(30);
@@ -66,24 +60,19 @@ public class FastWorkerScanService : IFastWorkerScanService
             FilingSections.Build(raw, FilingSections.ItemsFor(node)), node, null, false, null, ct);
     }
 
-    // Supplies lead-agent context with a fast-worker digest. Calls RunFastWorkerScanAsync first, then
-    // ScanFullSectionsAsync only when the targeted scan finds nothing.
-    public async Task<string> GetOrCreateFastWorkerDigestAsync(
+    // Creates fresh lead-agent context from workers. Runs a full-section worker scan only when the
+    // targeted scan finds nothing; LLM findings are never read from or written to the cache.
+    public async Task<string> CreateFastWorkerDigestAsync(
         long companyId, string accession, string doc, ExtractionNode node,
         CancellationToken ct = default)
     {
-        if (_cache.TryGetValue(FastWorkerDigestKey(accession, doc, node), out string? cached)) return cached ?? "";
-
         var scan = await RunFastWorkerScanAsync(companyId, accession, doc, node, ct: ct);
-        if (scan.Found > 0 && _cache.TryGetValue(FastWorkerDigestKey(accession, doc, node), out string? scanned))
-            return scanned ?? "";
+        if (scan.Found > 0) return scan.FastWorkerDigest;
 
         var fastWorkerFindings = await ScanFullSectionsAsync(companyId, accession, doc, node, ct);
-        var fastWorkerDigest = fastWorkerFindings.Count > 0
+        return fastWorkerFindings.Count > 0
             ? BuildFastWorkerDigest(fastWorkerFindings, node)
             : "";
-        _cache.Set(FastWorkerDigestKey(accession, doc, node), fastWorkerDigest, CacheFor);
-        return fastWorkerDigest;
     }
 
     // Main fast-worker scan entry point. Calls parsing, report, chunking, and worker helpers to build one
@@ -149,7 +138,6 @@ public class FastWorkerScanService : IFastWorkerScanService
         var fastWorkerDigest = fastWorkerFindings.Count > 0
             ? BuildFastWorkerDigest(fastWorkerFindings, node)
             : "";
-        _cache.Set(FastWorkerDigestKey(accession, doc, node), fastWorkerDigest, CacheFor);
         var corpus = captureArtifacts
             ? chunks.Select((chunk, index) => new ExtractionChunkArtifact(
                 index, chunk.Item, chunk.Titles ?? [], chunk.Text)).ToList()
@@ -247,20 +235,14 @@ public class FastWorkerScanService : IFastWorkerScanService
     private static ExtractionSuggestion MergeSuggestions(ExtractionSuggestion a, ExtractionSuggestion b)
     {
         var cls = a.Classification ?? b.Classification;
-        var value = a.Value ?? b.Value;
-        var pct = a.Percentage ?? b.Percentage;
         var related = !string.IsNullOrWhiteSpace(a.RelatedCompany) ? a.RelatedCompany : b.RelatedCompany;
         var note = !string.IsNullOrWhiteSpace(a.Note) ? a.Note : b.Note;
 
-        var figure = a.Value is not null ? a : b.Value is not null ? b : a;
-        var evidence = !string.IsNullOrWhiteSpace(figure.Evidence) ? figure.Evidence
-            : !string.IsNullOrWhiteSpace(a.Evidence) ? a.Evidence : b.Evidence;
+        var evidence = !string.IsNullOrWhiteSpace(a.Evidence) ? a.Evidence : b.Evidence;
 
         return a with
         {
             Classification = cls,
-            Value = value,
-            Percentage = pct,
             RelatedCompany = related,
             Note = note,
             Evidence = evidence,
@@ -284,8 +266,6 @@ public class FastWorkerScanService : IFastWorkerScanService
             sb.Append("- ").Append(s.Name);
             if (node == ExtractionNode.RISK && s.Classification != null)
                 sb.Append(" [").Append(s.Classification).Append(']');
-            if (s.Value != null) sb.Append(" | value=").Append(s.Value);
-            if (s.Percentage != null) sb.Append(" | pct=").Append(s.Percentage);
             if (!string.IsNullOrWhiteSpace(s.RelatedCompany)) sb.Append(" | counterparty=").Append(s.RelatedCompany);
             if (!string.IsNullOrWhiteSpace(s.Note)) sb.Append(" | note=").Append(s.Note);
             sb.Append(" | from ").Append(s.Section).Append('\n');
@@ -375,8 +355,6 @@ public class FastWorkerScanService : IFastWorkerScanService
             yield return new ExtractionSuggestion(
                 Name: name!,
                 Classification: node == ExtractionNode.RISK ? ReadJsonText(el, "classification") : null,
-                Value: null,
-                Percentage: null,
                 RelatedCompany: ReadJsonText(el, "related_company"),
                 Section: section,
                 Evidence: ReadJsonText(el, "evidence"),

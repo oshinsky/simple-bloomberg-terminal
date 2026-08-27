@@ -53,21 +53,19 @@ public class CounterpartyMeasurementService
         var model = await ModelLabelAsync(ct);
         var runAt = DateTime.UtcNow;
         var keys = await _keys.GetAsync(ct);
-        var sectionCandidates = new Dictionary<(int Run, string Section), int>();
-
         // Warm deterministic SEC and parsing caches before concurrent repetitions begin.
         var first = await ExecuteRunAsync(
             target, node, strictCounterparties, 1, null,
-            sectionCandidates, keys, model, onProgress, ct);
+            keys, model, onProgress, ct);
 
         using var gate = new SemaphoreSlim(MaxParallelRuns);
         var rest = await Task.WhenAll(
             Enumerable.Range(2, Math.Max(0, runs - 1)).Select(run => ExecuteRunAsync(
                 target, node, strictCounterparties, run, gate,
-                sectionCandidates, keys, model, onProgress, ct)));
+                keys, model, onProgress, ct)));
 
         return MeasurementCalculator.Calculate(
-            rest.Prepend(first).ToArray(), model, runAt, sectionCandidates);
+            rest.Prepend(first).ToArray(), model, runAt);
     }
 
     // Runs one complete fast-worker map and lead-agent reduce cycle.
@@ -77,7 +75,6 @@ public class CounterpartyMeasurementService
         bool strictCounterparties,
         int run,
         SemaphoreSlim? gate,
-        Dictionary<(int, string), int> sectionCandidates,
         UserApiKeys keys,
         string model,
         Action<MeasureProgress>? onProgress,
@@ -95,7 +92,6 @@ public class CounterpartyMeasurementService
             var leadAgent = services.GetRequiredService<ILeadAgentRunner>();
 
             var chunkItems = new Dictionary<int, string>();
-            var chunkFound = new Dictionary<int, int>();
             var errors = new List<string>();
 
             var scanned = await fastWorkerScan.RunFastWorkerScanAsync(
@@ -130,7 +126,6 @@ public class CounterpartyMeasurementService
                                 break;
 
                             case FastWorkerChunkPhase.Done:
-                                chunkFound[progress.Index] = progress.Found;
                                 onProgress?.Invoke(new MeasureProgress(
                                     run, "chunk-done", ChunkIndex: progress.Index, Found: progress.Found));
                                 break;
@@ -161,16 +156,6 @@ public class CounterpartyMeasurementService
             }
             onProgress?.Invoke(new MeasureProgress(
                 run, "lead-agent-done", LeadAgentClaims: leadAgentClaims.Count));
-
-            lock (sectionCandidates)
-            {
-                foreach (var (index, found) in chunkFound)
-                {
-                    var section = chunkItems.TryGetValue(index, out var item) ? item : "?";
-                    var key = (run, section);
-                    sectionCandidates[key] = sectionCandidates.GetValueOrDefault(key) + found;
-                }
-            }
 
             return new CounterpartyRunResult(
                 run, target, scanned.Corpus ?? [], fastWorkerClaims, leadAgentClaims, errors);

@@ -241,7 +241,7 @@ public class ExtractionController : Controller
                     Name = item.RelatedCompany!.Trim(),
                     Side = node == ExtractionNode.COST ? "SUPPLIER" : "CUSTOMER",
                     Ticker = item.RelatedCompanyTicker,
-                    Value = item.Value
+                    Value = null
                 };
                 // Phase 1 only: a name match, else a bare stub. No FMP/Yahoo/sonar/LLM on this path.
                 var (cpId, created) = _provisioning.GetOrCreateCounterpartyFast(linkReq, owner);
@@ -253,14 +253,14 @@ public class ExtractionController : Controller
             // The block's Reference (where in the filing) and Evidence (the one verbatim quote) ride
             // along onto the row itself, together with the filing they were read from.
             var rowId = _writer.UpsertRow(node, req.CompanyId, null, item.Classification, item.Name,
-                item.Value, item.Percentage, item.Note, counterpartyId, By,
+                null, null, item.Note, counterpartyId, By,
                 item.Reference, item.Evidence, filingId);
             if (rowId is null) continue;   // invalid risk scope — skip this item
             saved++;
 
             if (hasCounterparty && counterpartyId is { } cid)
             {
-                _writer.EnsureReciprocal(node, cid, req.CompanyId, owner.Name, item.Value, By);
+                _writer.EnsureReciprocal(node, cid, req.CompanyId, owner.Name, null, By);
                 links++;
             }
         }
@@ -344,7 +344,8 @@ public class ExtractionController : Controller
     public async Task<IActionResult> RunFastWorkerScanAsync(
         long companyId, [FromQuery] string accession, [FromQuery] string doc,
         [FromQuery] string? node, [FromQuery] string? form,
-        [FromQuery] string? companyName, [FromQuery] string? filingLabel)
+        [FromQuery] string? companyName, [FromQuery] string? filingLabel,
+        [FromQuery] bool strictCounterparties = false)
     {
         if (_companies.GetById(companyId) is null) return NotFound();
         if (string.IsNullOrWhiteSpace(accession) || string.IsNullOrWhiteSpace(doc))
@@ -356,6 +357,8 @@ public class ExtractionController : Controller
         RequireParsingKey(keys);
 
         if (!TryParseNode(node, out var parsedNode)) return BadRequest("Invalid extraction node.");
+        var useStrictCounterparties =
+            parsedNode == ExtractionNode.COST && strictCounterparties;
         var job = new ScanJob
         {
             CompanyId = companyId,
@@ -363,6 +366,7 @@ public class ExtractionController : Controller
             Accession = accession,
             Doc = doc,
             Node = parsedNode.ToString(),
+            StrictCounterparties = useStrictCounterparties,
             Form = form,
             FilingLabel = filingLabel ?? form ?? "filing"
         };
@@ -385,9 +389,15 @@ public class ExtractionController : Controller
                 // the live section tree instead (filled by the progress callback below).
                 job.Progress = $"Reading the {job.FilingLabel} & triaging sections with parallel agents…";
                 job.Report = await fastWorkerScan.RunFastWorkerScanAsync(
-                    companyId, accession, doc, parsedNode, p => ApplyScanProgress(job, p));
-                // Auto AI summary: one chat turn grounded on the digest the scan just cached, so the
-                // notification opens with a real answer rather than just counts.
+                    companyId, accession, doc, parsedNode, p => ApplyScanProgress(job, p),
+                    strictCounterparties: job.StrictCounterparties);
+                // A valid scan may find no candidates, but if every planned worker errored there was no
+                // usable scan at all. Surface that distinction to the chat widget instead of continuing
+                // to a misleading zero-candidate summary. Keep this policy local to the chat pipeline;
+                // measurement owns its separate diagnostics and scoring behavior.
+                if (AllScanWorkersFailed(job))
+                    throw new InvalidOperationException("Every AI scan worker failed. Open a failed chunk to inspect the provider response.");
+                // Auto AI summary: one chat turn grounded directly on this scan's fresh digest.
                 job.Progress = $"Found {job.Report.Found} candidate(s) · writing summary…";
                 var seed = new List<ChatMessage>
                 {
@@ -399,7 +409,9 @@ public class ExtractionController : Controller
                 job.Replying = true;
                 job.ReplyBuffer = "";
                 job.ReplyThink = "";
-                await foreach (var d in chat.StreamReplyAsync(companyId, accession, doc, parsedNode, seed))
+                await foreach (var d in chat.StreamReplyAsync(
+                    companyId, accession, doc, parsedNode, seed,
+                    fastWorkerDigest: job.Report.FastWorkerDigest))
                 {
                     if (d.Kind == "text") job.ReplyBuffer += d.Text;
                     else if (d.Kind == "reasoning") job.ReplyThink += d.Text;
@@ -471,6 +483,13 @@ public class ExtractionController : Controller
                 if (p.Response != null) state.Response = p.Response;
             }
         }
+    }
+
+    private static bool AllScanWorkersFailed(ScanJob job)
+    {
+        lock (job.SectionsLock)
+            return job.ChunkList.Count > 0 &&
+                   job.ChunkList.All(chunk => chunk.Status == FastWorkerChunkPhase.Error.ToString());
     }
 
     private static object ScanDto(ScanJob j)
@@ -594,7 +613,11 @@ public class ExtractionController : Controller
             var chat = scope.ServiceProvider.GetRequiredService<IExtractionChatService>();
             try
             {
-                await foreach (var d in chat.StreamReplyAsync(job.CompanyId, job.Accession, job.Doc, node, history))
+                // Follow-ups belong to this completed scan. Pass its digest explicitly: worker findings
+                // are intentionally not cached, and omitting it would launch a second filing scan.
+                await foreach (var d in chat.StreamReplyAsync(
+                    job.CompanyId, job.Accession, job.Doc, node, history,
+                    fastWorkerDigest: job.Report?.FastWorkerDigest))
                 {
                     if (d.Kind == "text") job.ReplyBuffer += d.Text;
                     else if (d.Kind == "reasoning") job.ReplyThink += d.Text;
